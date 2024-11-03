@@ -6,3 +6,5 @@ pytesseract
 pdfminer.six
 pillow
 matplotlib
+pathlib
+typing
