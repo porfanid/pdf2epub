@@ -168,4 +168,9 @@ text_files/
 input/
 output/
 figures/
-cache.db
+
+.litellm_cache/
+.litellm_cache/*
+
+# Config with sensitive data
+config.yaml

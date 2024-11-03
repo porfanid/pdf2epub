@@ -50,9 +50,10 @@ def main():
     if not os.path.exists(args.config):
         create_default_config()
     
-    # Create output and image directories if they don't exist
+    # Create output, image, and cache directories if they don't exist
     os.makedirs(args.output_dir, exist_ok=True)
     os.makedirs(args.image_dir, exist_ok=True)
+    os.makedirs(".litellm_cache", exist_ok=True)
     
     # Initialize E2MParser and E2MConverter with config
     try:
