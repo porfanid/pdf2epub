@@ -1,2 +1,8 @@
 wisup_e2m
 pyyaml
+unstructured[pdf]
+unstructured-inference
+pytesseract
+pdfminer.six
+pillow
+matplotlib

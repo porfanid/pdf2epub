@@ -165,3 +165,7 @@ cython_debug/
 filetree.md
 filetree.sh
 text_files/
+input/
+output/
+figures/
+cache.db
