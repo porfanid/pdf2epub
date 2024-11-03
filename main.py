@@ -63,45 +63,187 @@ def setup_argparser():
     return parser
 
 class ContentPreservingConverter:
-    """Handles converting large documents while preserving all content"""
+    """Enhanced converter that better handles academic paper formatting and book structures"""
     
     def __init__(self, text_converter, intermediate_dir, chunk_size=2000, overlap=300):
         self.text_converter = text_converter
         self.chunk_size = chunk_size
         self.overlap = overlap
         self.intermediate_dir = intermediate_dir
-        # Modified system prompt to enforce stricter content preservation
-        self.system_prompt = """You are performing a strict 1:1 PDF to Markdown conversion. Your ONLY task is to:
-1. Convert the input text to Markdown syntax
-2. Preserve EVERY SINGLE WORD exactly as it appears in the source (except headers, footers, page numbers, author contact information or other non-content text)
-3. Maintain spacing and paragraph structure
-4. Do not combine or split paragraphs
-5. Do not reformat or "clean up" the text
-6. Do not summarize or restructure anything
-7. Do remove headers, footers, page numbers, or other non-content text
+        self.system_prompt = """You are performing conversion of PDF content to clean, well-structured Markdown. Your task is to:
 
-For each piece of text:
-- If it looks like a heading, make it a Markdown heading with #
-- If it looks like a list item, make it a Markdown list item
-- If it's a quote, use > for the quote
-- Keep all citations, references, and numbers exactly as they appear
-- Preserve all technical terms exactly
-- Convert figure references to Markdown image syntax if present
-- Keep ALL content, no matter how redundant or messy it might seem
+1. Identify and preserve the document's logical structure while removing non-content elements:
+   - Remove headers, footers, page numbers, and journal information
+   - Remove repeated metadata like DOIs, ISBNs, and copyright notices
+   - Remove author contact information unless it's part of the main content
+   - Keep and properly format author names and affiliations in the header section
+   
+2. Apply appropriate Markdown formatting:
+   - Use # for main title
+   - Use ## for section headings
+   - Use ### for subsection headings
+   - Format lists with proper Markdown bullet points or numbers
+   - Preserve emphasis (bold/italic) where it appears in the original
+   - Format citations and references properly
+   - Convert figure references to Markdown image syntax
+   - Use appropriate blockquotes (>) for quoted content
+   - Use proper line breaks and spacing between sections
+   
+3. Clean up typical PDF conversion artifacts:
+   - Remove unnecessary line breaks within paragraphs
+   - Fix hyphenation at line breaks
+   - Remove repeated whitespace
+   - Fix common OCR errors in special characters
+   - Properly handle multi-column layouts
+   - Remove or fix artifacts from equations and special characters
 
-Do NOT:
-- Do not summarize or shorten anything
-- Do not rewrite or paraphrase
-- Do not reorganize content
-- Do not fix spelling or grammar
-- Do not combine similar sections
-- Do not remove any content
-- Do not add any content
+4. Special handling for academic papers:
+   - Preserve the abstract as a separate section
+   - Maintain proper formatting of equations
+   - Keep figure and table captions
+   - Preserve citation numbers and reference formatting
+   - Handle footnotes appropriately
 
-Your output should contain the same content as the input, just with Markdown syntax added and removed headers, footers, page numbers, or other non-content text.
-The ultimate goal is to preserve the original content as closely as possible but have a clean document in the end which could be sold as a book.
-Note that the content is split by a script into multiple chunks to ensure good inference performance and will be recombined by a script after conversion."""
+5. Preserve structured information:
+   - Maintain the logical flow of the document
+   - Keep all content in its proper context
+   - Preserve hierarchical relationships between sections
+   - Maintain proper ordering of content
 
+Do not:
+- Add or remove any actual content
+- Rephrase or paraphrase text
+- Reorganize the document structure
+- Combine or split sections unless fixing obvious layout issues
+- Add explanatory text or comments
+
+The goal is a clean, properly formatted Markdown document that maintains the exact content and structure of the original PDF while removing artifacts and applying correct Markdown syntax."""
+
+    def _preprocess_text(self, text):
+        """Preprocess text to handle common PDF conversion issues"""
+        # Remove repeated headers/footers often found in PDFs
+        text = re.sub(r'(?m)^[\d\s]*$', '', text)  # Remove standalone page numbers
+        
+        # Remove common academic paper headers/footers
+        patterns_to_remove = [
+            r'(?m)^.*?(?:Informatik Spektrum|DOI:|ISSN:).*$\n?',
+            r'(?m)^.*?(?:Received:|Accepted:|Published).*?202\d.*$\n?',
+            r'(?m)^.*?©.*?202\d.*$\n?',
+            r'(?m)^.*?Creative Commons.*$\n?',
+            r'(?m)^.*?http.*$\n?',  # Remove URLs in headers/footers
+            r'@ Springer\s*$\n?'
+        ]
+        for pattern in patterns_to_remove:
+            text = re.sub(pattern, '', text, flags=re.MULTILINE)
+        
+        # Fix hyphenation while preserving paragraph breaks
+        text = re.sub(r'(\w+)-\s*\n\s*(\w+)', r'\1\2', text)
+        
+        # Clean up whitespace more carefully
+        text = re.sub(r' +', ' ', text)  # Collapse multiple spaces
+        text = re.sub(r'\t+', ' ', text)  # Convert tabs to spaces
+        text = re.sub(r'\n\s*\n\s*\n+', '\n\n', text)  # Collapse multiple blank lines to two
+        text = re.sub(r'(?<=\S) +(?=\n)', '', text)  # Remove trailing spaces
+        text = re.sub(r'^ +', '', text, flags=re.MULTILINE)  # Remove leading spaces
+        
+        # Fix special characters
+        text = text.replace('¨', '')  # Remove diaeresis artifacts
+        text = text.replace('´', "'")  # Replace weird quotes
+        text = text.replace('’', "'")  # Normalize quotes
+        text = text.replace('“', '"').replace('”', '"')  # Normalize quotes
+        
+        return text.strip()
+
+    def _identify_document_structure(self, text):
+        """Identify the main structural elements of the document"""
+        structure = {
+            'title': None,
+            'authors': None,
+            'abstract': None,
+            'sections': []
+        }
+        
+        # Find title (usually first significant line)
+        lines = text.split('\n')
+        for line in lines[:10]:  # Look in first 10 lines
+            if len(line.strip()) > 20 and not line.startswith('http'):
+                structure['title'] = line.strip()
+                break
+        
+        # Identify abstract
+        abstract_match = re.search(r'(?i)abstract.*?\n(.*?)(?=\n\s*[A-Z][^a-z]*$)', text, re.DOTALL)
+        if abstract_match:
+            structure['abstract'] = abstract_match.group(1).strip()
+        
+        # Find main sections
+        section_pattern = r'^[A-Z][^a-z\n]{0,100}$'  # Uppercase lines are likely sections
+        structure['sections'] = re.findall(section_pattern, text, re.MULTILINE)
+        
+        return structure
+
+    def _format_to_markdown(self, text, structure):
+        """Convert text to properly formatted Markdown based on identified structure"""
+        md_lines = []
+        
+        # Add title
+        if structure['title']:
+            md_lines.append(f"# {structure['title'].strip()}\n")
+        
+        # Add abstract if present
+        if structure['abstract']:
+            md_lines.append("## Abstract\n")
+            md_lines.append(f"{structure['abstract'].strip()}\n")
+        
+        # Process main content
+        current_text = text
+        
+        # Convert section headers (but not if they're already markdown)
+        for section in structure['sections']:
+            section = section.strip()
+            if section and not section.startswith('#'):
+                # Replace full line to preserve surrounding whitespace
+                current_text = re.sub(
+                    f"^{re.escape(section)}$",
+                    f"## {section}",
+                    current_text,
+                    flags=re.MULTILINE
+                )
+        
+        # Format lists while preserving indentation
+        current_text = re.sub(r'(?m)^(\s*)[\-•]\s*', r'\1* ', current_text)
+        current_text = re.sub(r'(?m)^(\s*\d+\.)\s*', r'\1 ', current_text)
+        
+        # Format figure references
+        current_text = re.sub(
+            r'(?i)(?:abb\.|abbildung|fig\.|figure)\s*(\d+)',
+            r'![Figure \1](figures/figure-\1.jpg)',
+            current_text
+        )
+        
+        # Format quotes
+        current_text = re.sub(
+            r'(?m)^(\s*)["""](.*?)["""]$',
+            r'\1> \2',
+            current_text
+        )
+        
+        # Ensure proper line breaks between sections
+        current_text = re.sub(r'\n{3,}', '\n\n', current_text)
+        
+        # Add processed content
+        md_lines.append(current_text)
+        
+        # Join with proper line breaks and clean up any remaining artifacts
+        result = "\n".join(md_lines)
+        
+        # Post-processing cleanup
+        result = re.sub(r'\n{3,}', '\n\n', result)  # No more than 2 consecutive line breaks
+        result = re.sub(r'(^|\n)[\s\-_]+($|\n)', r'\1\2', result)  # Remove separator lines
+        result = re.sub(r'  +', ' ', result)  # Remove multiple spaces
+        
+        return result
+    
+    
     def _split_into_chunks(self, text):
         """Split text into chunks, preserving paragraph boundaries and headers"""
         # Split on clear section boundaries if possible
@@ -135,49 +277,90 @@ Note that the content is split by a script into multiple chunks to ensure good i
         return chunks
 
     def convert(self, text):
-        """Convert text while preserving all content"""
+        """Convert text while preserving content and applying proper Markdown formatting"""
+        # Initial preprocessing
+        text = self._preprocess_text(text)
+        
+        # Identify document structure
+        structure = self._identify_document_structure(text)
+        
+        # Split into manageable chunks
         chunks = self._split_into_chunks(text)
         logger.info(f"Split document into {len(chunks)} chunks")
         
+        # Process each chunk
         converted_chunks = []
         for i, chunk in enumerate(chunks):
             try:
-                logger.info(f"Converting chunk {i+1}/{len(chunks)}")
+                converted = self._convert_chunk(chunk)
+                converted_chunks.append(converted)
+            except Exception as e:
+                logger.error(f"Error converting chunk {i+1}: {str(e)}")
+                converted_chunks.append(chunk)
+        
+        # Combine chunks and apply final formatting
+        combined = self._combine_chunks(converted_chunks)
+        final_markdown = self._format_to_markdown(combined, structure)
+        
+        # Remove any duplicate content that might have been introduced
+        final_markdown = self._remove_duplicates(final_markdown)
+        
+        return final_markdown
+    
+    def _convert_chunk(self, chunk):
+            """Convert a single chunk with document-type awareness"""
+            try:
                 # Add system prompt and clear instructions for this chunk
                 prompt = f"{self.system_prompt}\n\nCONVERT THIS TEXT TO MARKDOWN:\n\n{chunk}"
                 
                 converted = self.text_converter.convert(prompt)
-                # Remove any potential system prompt reflection in output
+                
+                # Clean up any prompt reflections
                 converted = re.sub(r'^You are performing.*?MARKDOWN:', '', converted, flags=re.DOTALL)
                 converted = converted.strip()
                 
                 # Basic validation
-                if len(converted) < len(chunk) * 0.8:  # Reduced threshold but still checking
-                    logger.warning(f"Chunk {i+1} shows content loss. Original: {len(chunk)} chars, Converted: {len(converted)} chars")
-                    # Save problematic chunks for analysis
+                if len(converted) < len(chunk) * 0.8:
+                    logger.warning(f"Chunk shows potential content loss - saving for analysis")
                     os.makedirs(self.intermediate_dir, exist_ok=True)
-                    with open(Path(self.intermediate_dir) / f"chunk_{i+1}_original.txt", 'w', encoding='utf-8') as f:
+                    
+                    with open(os.path.join(self.intermediate_dir, "chunk_original.txt"), 'w', encoding='utf-8') as f:
                         f.write(chunk)
-                    with open(Path(self.intermediate_dir) / f"chunk_{i+1}_converted.md", 'w', encoding='utf-8') as f:
+                    with open(os.path.join(self.intermediate_dir, "chunk_converted.md"), 'w', encoding='utf-8') as f:
                         f.write(converted)
+                    
                     # Use original if conversion lost too much
-                    converted = chunk
+                    return chunk
                 
-                converted_chunks.append(converted)
+                # Clean up common markdown formatting issues
+                converted = self._clean_markdown_formatting(converted)
+                
+                return converted
                 
             except Exception as e:
-                logger.error(f"Error converting chunk {i+1}: {str(e)}")
-                # On error, preserve original content
-                converted_chunks.append(chunk)
-                
-        # Combine chunks
-        combined = self._combine_chunks(converted_chunks)
-        
-        # Warning instead of error if content loss detected
-        if len(combined) < len(text) * 0.9:
-            logger.warning(f"Final output shows some content loss. Original: {len(text)} chars, Converted: {len(combined)} chars")
+                logger.error(f"Error in chunk conversion: {str(e)}")
+                return chunk
             
-        return combined
+    def _clean_markdown_formatting(self, text):
+        """Clean up common markdown formatting issues"""
+        # Fix headers that might have extra hash marks
+        text = re.sub(r'(#{1,6})\s*#{1,6}\s', r'\1 ', text)
+        
+        # Ensure proper spacing around headers
+        text = re.sub(r'(\n#{1,6}[^\n]+)(\n[^#\n])', r'\1\n\2', text)
+        
+        # Fix list item spacing
+        text = re.sub(r'(\n[*-]\s[^\n]+)(\n[^*\n-])', r'\1\n\2', text)
+        
+        # Properly format blockquotes
+        text = re.sub(r'(\n>\s[^\n]+)(\n[^>\n])', r'\1\n\2', text)
+        
+        # Fix extra whitespace
+        text = re.sub(r'\n\s*\n\s*\n+', '\n\n', text)
+        text = re.sub(r' +', ' ', text)
+        text = re.sub(r'^ +', '', text, flags=re.MULTILINE)
+        
+        return text.strip()
     
     def _find_overlap(self, text1, text2):
         """Find the largest overlapping text between two chunks"""
@@ -232,6 +415,27 @@ Note that the content is split by a script into multiple chunks to ensure good i
                 result += '\n\n' + next_chunk
         
         return result.strip()
+
+    def _remove_duplicates(self, text):
+        """Remove any duplicate paragraphs or sections while preserving order"""
+        lines = text.split('\n')
+        seen = set()
+        unique_lines = []
+        
+        for line in lines:
+            # Skip empty lines or very short lines
+            if len(line.strip()) < 10:
+                unique_lines.append(line)
+                continue
+                
+            # Create a normalized version for comparison
+            normalized = re.sub(r'\s+', ' ', line.strip().lower())
+            
+            if normalized not in seen:
+                seen.add(normalized)
+                unique_lines.append(line)
+        
+        return '\n'.join(unique_lines)
     
 class PDF2Markdown:
     def __init__(self, pdf_files, output_dir, intermediate_dir, config, image_dir, debug):
