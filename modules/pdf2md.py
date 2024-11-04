@@ -26,12 +26,12 @@ def get_default_input_dir() -> Path:
 def save_images(images: dict, image_dir: Path) -> None:
     """
     Save images with proper error handling and format detection.
+    Preserves original image filenames from the input.
     
     Args:
-        images: Dictionary of images from marker-pdf conversion
+        images: Dictionary of images from marker-pdf conversion where keys are filenames
         image_dir: Directory to save images to
     """
-    
     if not images:
         print("No images found in document")
         return
@@ -39,50 +39,36 @@ def save_images(images: dict, image_dir: Path) -> None:
     image_dir.mkdir(exist_ok=True)
     saved_count = 0
     
-    for idx, image_data in enumerate(images.values()):
+    for filename, image_data in images.items():
         try:
             # Skip if image data is None or empty
             if not image_data:
                 continue
                 
-            image_path = image_dir / f"image_{idx}.png"
+            image_path = image_dir / filename
             
             # Handle different image data formats
             if isinstance(image_data, Image.Image):
-                try:
-                    # Save PIL Image directly
-                    image_data.save(image_path)
-                    saved_count += 1
-                except Exception as e:
-                    print(f"Error saving PIL Image {idx}: {str(e)}")
-                    continue
+                image_data.save(image_path)
+                saved_count += 1
                     
             elif isinstance(image_data, bytes):
-                try:
-                    img = Image.open(io.BytesIO(image_data))
-                    img.save(image_path)
-                    saved_count += 1
-                except Exception as e:
-                    print(f"Error processing bytes image {idx}: {str(e)}")
-                    continue
+                img = Image.open(io.BytesIO(image_data))
+                img.save(image_path)
+                saved_count += 1
                     
             elif isinstance(image_data, str):
-                try:
-                    if Path(image_data).exists():
-                        img = Image.open(image_data)
-                        img.save(image_path)
-                        saved_count += 1
-                    else:
-                        print(f"Image path does not exist for image {idx}: {image_data}")
-                except Exception as e:
-                    print(f"Error processing string image path {idx}: {str(e)}")
-                    continue
+                if Path(image_data).exists():
+                    img = Image.open(image_data)
+                    img.save(image_path)
+                    saved_count += 1
+                else:
+                    print(f"Image path does not exist: {image_data}")
             else:
-                print(f"Unsupported image data type for image {idx}: {type(image_data)}")
-                continue
+                print(f"Unsupported image data type for {filename}: {type(image_data)}")
                 
         except Exception as e:
-            print(f"Error saving image {idx}: {str(e)}")
+            print(f"Error saving image {filename}: {str(e)}")
             continue
             
     if saved_count > 0:
@@ -181,6 +167,3 @@ def add_pdfs_to_queue(input_path: Path) -> list[Path]:
         queue.append(input_path)
         
     return queue
-
-if __name__=="__main__":
-    pass

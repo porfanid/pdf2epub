@@ -7,25 +7,10 @@ import json
 from PIL import Image, ImageDraw, ImageFont
 import textwrap
 from pathlib import Path
+import re
 
 ## markdown version 3.1
 
-'''
-import numpy as np
-import matplotlib.pyplot as plt
-
-plt.style.use('ggplot')
-
-X = np.linspace(-5,5,100)
-Y = np.sin(X)+0.2*np.random.randn(100)
-Z = -0.2*X
-
-plt.figure(figsize=(8,5))
-plt.scatter(X,Y,c="darkgray",s=50)
-plt.plot(X,Z,linewidth=5,c="black")
-plt.savefig("./a.png",dpi=150)
-plt.show()
-'''
 
 
 def process_markdown_for_images(markdown_text: str, work_dir: Path) -> tuple[str, list[str]]:
@@ -33,8 +18,7 @@ def process_markdown_for_images(markdown_text: str, work_dir: Path) -> tuple[str
     Process markdown content to find image references and ensure they are properly formatted for EPUB.
     Returns modified markdown text and list of image filenames.
     """
-    import re
-    from pathlib import Path
+    print("Started processing markdown for images")
     
     image_pattern = r'!\[(.*?)\]\((.*?)\)'
     images_found = []
@@ -42,12 +26,13 @@ def process_markdown_for_images(markdown_text: str, work_dir: Path) -> tuple[str
     
     # Find all image references in markdown
     for match in re.finditer(image_pattern, markdown_text):
+        print(f"Found image: {match}")
         alt_text, image_path = match.groups()
         image_path = image_path.strip()
-        
+        print(f"Image path: {image_path}")
         # Convert path to Path object for manipulation
         img_path = Path(image_path)
-        
+        print(f"Image path: {img_path}")
         # Handle both absolute and relative paths
         if img_path.is_absolute():
             rel_path = img_path.relative_to(work_dir)
@@ -56,6 +41,7 @@ def process_markdown_for_images(markdown_text: str, work_dir: Path) -> tuple[str
             
         # Ensure image exists in images directory
         full_image_path = work_dir / 'images' / img_path.name
+        print(f"Full image path: {full_image_path}")
         if full_image_path.exists():
             # Add to list of found images
             images_found.append(img_path.name)
