@@ -99,13 +99,10 @@ def process_markdown_for_images(markdown_text: str, work_dir: Path) -> tuple[str
     
     # Find all image references in markdown
     for match in re.finditer(image_pattern, markdown_text):
-        print(f"Found image: {match}")
         alt_text, image_path = match.groups()
         image_path = image_path.strip()
-        print(f"Image path: {image_path}")
         # Convert path to Path object for manipulation
         img_path = Path(image_path)
-        print(f"Image path: {img_path}")
         # Handle both absolute and relative paths
         if img_path.is_absolute():
             rel_path = img_path.relative_to(work_dir)
@@ -114,7 +111,6 @@ def process_markdown_for_images(markdown_text: str, work_dir: Path) -> tuple[str
             
         # Ensure image exists in images directory
         full_image_path = work_dir / 'images' / img_path.name
-        print(f"Full image path: {full_image_path}")
         if full_image_path.exists():
             # Add to list of found images
             images_found.append(img_path.name)
@@ -614,7 +610,6 @@ def main(args):
         # Get title and author
         title = json_data["metadata"].get("dc:title", "Untitled Document")
         authors = json_data["metadata"].get("dc:creator", None)
-        
 
         # Compile list of files
         all_md_filenames = []
@@ -627,7 +622,56 @@ def main(args):
         
         all_image_filenames = get_all_filenames(images_dir, extensions=["gif", "jpg", "jpeg", "png"])
 
-        # Create the EPUB file
+        # First process all chapters and images
+        images_dir = Path(work_dir) / 'images'
+        epub_images_dir = Path(work_dir) / 'epub_images'
+        processed_images = {}  # Store processed image data
+        all_referenced_images = set()
+        chapter_data = {}  # Store processed chapter data
+
+        # First pass: Process chapters and collect image references
+        print("\nProcessing chapters and collecting image references...")
+        for i, chapter in enumerate(json_data["chapters"]):
+            css_files = json_data["default_css"][:]
+            if chapter["css"]:
+                css_files.append(chapter["css"])
+                
+            # Process chapter content
+            chapter_xhtml, chapter_images = get_chapter_XML(
+                work_dir, 
+                chapter["markdown"], 
+                css_files,
+                content=chapter_contents[chapter["markdown"]]
+            )
+            chapter_data[chapter["markdown"]] = chapter_xhtml
+            all_referenced_images.update(chapter_images)
+
+        # Process and optimize images
+        print("\nProcessing and optimizing images...")
+        if images_dir.exists() and all_referenced_images:
+            epub_images_dir.mkdir(exist_ok=True)
+            
+            for image in all_referenced_images:
+                src_path = images_dir / image
+                if src_path.exists():
+                    try:
+                        dest_path = epub_images_dir / image
+                        copy_and_optimize_image(src_path, dest_path)
+                        
+                        # Store processed image data
+                        with open(dest_path, "rb") as f:
+                            processed_images[image] = f.read()
+                    except Exception as e:
+                        print(f"Warning: Failed to process image {image}: {e}")
+                else:
+                    print(f"Warning: Referenced image not found: {src_path}")
+            
+            # Cleanup temporary directory
+            import shutil
+            shutil.rmtree(epub_images_dir, ignore_errors=True)
+
+        # Now create the EPUB file with all prepared content
+        print("\nCreating EPUB file...")
         with zipfile.ZipFile(output_path, "w") as epub:
             # Write mimetype (must be first and uncompressed)
             epub.writestr("mimetype", "application/epub+zip")
@@ -645,60 +689,29 @@ def main(args):
                 ), 
                 zipfile.ZIP_DEFLATED
             )
-            # Create cover page HTML
-            coverpage_data = get_coverpage_XML(title, authors)
+
             # Write cover page
+            coverpage_data = get_coverpage_XML(title, authors)
             epub.writestr("OPS/titlepage.xhtml", coverpage_data.encode('utf-8'), zipfile.ZIP_DEFLATED)
 
-            all_referenced_images = set()
-
-            # Write chapters using updated content
+            # Write processed chapters
+            print("Writing chapters...")
             for i, chapter in enumerate(json_data["chapters"]):
-                css_files = json_data["default_css"][:]
-                if chapter["css"]:
-                    css_files.append(chapter["css"])
-                    
-                # Use the updated content from review
-                chapter_data, chapter_images = get_chapter_XML(
-                    work_dir, 
-                    chapter["markdown"], 
-                    css_files,
-                    content=chapter_contents[chapter["markdown"]]
-                )
-                all_referenced_images.update(chapter_images)
-                
+                print(f"  Writing chapter {i+1}/{len(json_data['chapters'])}: {chapter['markdown']}")
                 epub.writestr(
                     f"OPS/s{i:05d}-{chapter['markdown'].split('.')[0]}.xhtml",
-                    chapter_data.encode('utf-8'),
+                    chapter_data[chapter["markdown"]].encode('utf-8'),
                     zipfile.ZIP_DEFLATED
                 )
 
-            # Process and copy images
-            images_dir = Path(work_dir) / 'images'
-            if images_dir.exists():
-                epub_images_dir = Path(work_dir) / 'epub_images'
-                epub_images_dir.mkdir(exist_ok=True)
-                
-                for image in all_referenced_images:
-                    src_path = images_dir / image
-                    if src_path.exists():
-                        try:
-                            dest_path = epub_images_dir / image
-                            copy_and_optimize_image(src_path, dest_path)
-                            
-                            # Add optimized image to EPUB
-                            with open(dest_path, "rb") as f:
-                                epub.writestr(f"OPS/images/{image}", f.read(), zipfile.ZIP_DEFLATED)
-                        except Exception as e:
-                            print(f"Warning: Failed to process image {image}: {e}")
-                    else:
-                        print(f"Warning: Referenced image not found: {src_path}")
-                
-                # Cleanup temporary directory
-                import shutil
-                shutil.rmtree(epub_images_dir, ignore_errors=True)
+            # Write processed images
+            if processed_images:
+                print(f"Writing {len(processed_images)} processed images...")
+                for image_name, image_data in processed_images.items():
+                    epub.writestr(f"OPS/images/{image_name}", image_data, zipfile.ZIP_DEFLATED)
 
             # Write TOC files
+            print("Writing table of contents...")
             epub.writestr("OPS/TOC.xhtml", 
                 get_TOC_XML(json_data["default_css"], all_md_filenames),
                 zipfile.ZIP_DEFLATED
@@ -709,70 +722,24 @@ def main(args):
                 zipfile.ZIP_DEFLATED
             )
 
-            # Copy images
-            if os.path.exists(images_dir):
-                for image in all_image_filenames:
+            # Copy remaining images that weren't referenced in markdown
+            remaining_images = set(all_image_filenames) - set(processed_images.keys())
+            if remaining_images and os.path.exists(images_dir):
+                print(f"Writing {len(remaining_images)} additional images...")
+                for image in remaining_images:
                     with open(os.path.join(images_dir, image), "rb") as f:
                         epub.writestr(f"OPS/images/{image}", f.read(), zipfile.ZIP_DEFLATED)
 
             # Copy CSS files
             if os.path.exists(css_dir):
+                print(f"Writing {len(all_css_filenames)} CSS files...")
                 for css in all_css_filenames:
                     css_path = os.path.join(css_dir, css)
                     if os.path.exists(css_path):
                         with open(css_path, "rb") as f:
                             epub.writestr(f"OPS/css/{css}", f.read(), zipfile.ZIP_DEFLATED)
-                    else:
-                        # Create default CSS if file doesn't exist
-                        default_css = """
-                        @page { margin: 5%; }
-                        html { font-size: 100%; }
-                        body { 
-                            margin: 0 auto;
-                            max-width: 45em;
-                            padding: 0.5em 1em;
-                            text-align: justify;
-                            font-family: serif;
-                            font-size: 1rem;
-                            line-height: 1.5;
-                            color: #222;
-                        }
-                        h1, h2, h3, h4, h5, h6 { 
-                            text-align: left;
-                            color: #333;
-                            line-height: 1.2;
-                            margin: 1.5em 0 0.5em 0;
-                        }
-                        h1 { font-size: 1.5em; margin-top: 2em; }
-                        h2 { font-size: 1.3em; }
-                        h3 { font-size: 1.2em; }
-                        p { 
-                            margin: 0.75em 0;
-                            line-height: 1.6;
-                        }
-                        img { 
-                            max-width: 100%; 
-                            height: auto;
-                            display: block;
-                            margin: 1em auto;
-                        }
-                        .title { 
-                            font-size: 1.8em;
-                            font-weight: bold;
-                            text-align: center;
-                            margin: 2em 0 1em 0;
-                        }
-                        .authors { 
-                            font-size: 1.1em;
-                            text-align: center;
-                            font-style: italic;
-                            margin-bottom: 2em;
-                            color: #555;
-                        }
-                        """
-                        epub.writestr(f"OPS/css/{css}", default_css.encode('utf-8'), zipfile.ZIP_DEFLATED)
 
-        print(f"EPUB creation complete: {output_path}")
+        print(f"\nEPUB creation complete: {output_path}")
         
     except Exception as e:
         import traceback
