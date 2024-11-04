@@ -8,10 +8,83 @@ from PIL import Image, ImageDraw, ImageFont
 import textwrap
 from pathlib import Path
 import re
+from datetime import datetime
+from typing import Dict, Optional, Tuple
+import subprocess
 
 ## markdown version 3.1
 
+def get_user_input(prompt: str, default: str = "") -> str:
+    """Get user input with a default value."""
+    user_input = input(f"{prompt} [{default}]: ").strip()
+    return user_input if user_input else default
 
+def get_metadata_from_user(existing_metadata: Optional[Dict] = None) -> Dict:
+    """
+    Interactively collect metadata from user with defaults from existing metadata.
+    """
+    if existing_metadata is None:
+        existing_metadata = {}
+    
+    metadata = existing_metadata.get("metadata", {})
+    
+    print("\nPlease provide the following metadata for your EPUB (press Enter to use default value):")
+    
+    # Get each metadata field with existing values as defaults
+    fields = {
+        "dc:title": ("Title", metadata.get("dc:title", "Untitled Document")),
+        "dc:creator": ("Author(s)", metadata.get("dc:creator", "Unknown Author")),
+        "dc:identifier": ("Unique Identifier", metadata.get("dc:identifier", f"id-{datetime.now().strftime('%Y%m%d%H%M%S')}")),
+        "dc:language": ("Language (e.g., en, de, fr)", metadata.get("dc:language", "en")),
+        "dc:rights": ("Rights", metadata.get("dc:rights", "All rights reserved")),
+        "dc:publisher": ("Publisher", metadata.get("dc:publisher", "PDF2EPUB")),
+        "dc:date": ("Publication Date (YYYY-MM-DD)", metadata.get("dc:date", datetime.now().strftime("%Y-%m-%d")))
+    }
+    
+    updated_metadata = {}
+    for key, (prompt, default) in fields.items():
+        value = get_user_input(prompt, default)
+        updated_metadata[key] = value
+        
+    return {
+        "metadata": updated_metadata,
+        "default_css": existing_metadata.get("default_css", ["style.css"]),
+        "chapters": existing_metadata.get("chapters", []),
+        "cover_image": existing_metadata.get("cover_image", None)
+    }
+
+def review_markdown(markdown_path: Path) -> tuple[bool, str]:
+    """
+    Ask user if they want to review the markdown file and open it in default editor if yes.
+    Returns tuple of (should_continue, updated_content)
+    """
+    content = markdown_path.read_text(encoding='utf-8')
+    
+    while True:
+        response = input("\nWould you like to review the markdown file before conversion? (y/n): ").lower()
+        if response in ['y', 'yes']:
+            try:
+                if os.name == 'nt':  # Windows
+                    os.startfile(markdown_path)
+                elif os.name == 'posix':  # macOS and Linux
+                    subprocess.run(['xdg-open', str(markdown_path)], check=True)
+                
+                while True:
+                    proceed = input("\nPress Enter when you're done editing (or 'q' to abort): ").lower()
+                    if proceed == 'q':
+                        return False, content
+                    elif proceed == '':
+                        # Reload content from file after editing
+                        updated_content = markdown_path.read_text(encoding='utf-8')
+                        return True, updated_content
+            except Exception as e:
+                print(f"\nError opening markdown file: {e}")
+                print("Proceeding with conversion...")
+                return True, content
+        elif response in ['n', 'no']:
+            return True, content
+        else:
+            print("Please enter 'y' or 'n'")
 
 def process_markdown_for_images(markdown_text: str, work_dir: Path) -> tuple[str, list[str]]:
     """
@@ -244,15 +317,8 @@ def get_container_XML():
     container_data += """</rootfiles>\n</container>"""
     return container_data
 
-def get_coverpage_XML(title):
+def get_coverpage_XML(title, authors):
     """Generate a simple cover page with title and optional author input."""
-    
-    authors = input("Please enter author(s) name(s): ").strip()
-    
-    # Escape special characters
-    safe_title = title.replace('<', '&lt;').replace('>', '&gt;')
-    safe_authors = authors.replace('<', '&lt;').replace('>', '&gt;')
-    
     return f"""<?xml version="1.0" encoding="utf-8"?>
 <html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en">
 <head>
@@ -289,8 +355,8 @@ p {{
 </head>
 <body>
     <div class="cover">
-        <h1>{safe_title}</h1>
-        <p>{safe_authors}</p>
+        <h1>{title}</h1>
+        <p>{authors}</p>
     </div>
 </body>
 </html>"""
@@ -330,15 +396,24 @@ def get_TOCNCX_XML(markdown_filenames):
 
     return toc_ncx
 
-def get_chapter_XML(work_dir: str, md_filename: str, css_filenames: list[str]) -> tuple[str, list[str]]:
+def get_chapter_XML(work_dir: str, md_filename: str, css_filenames: list[str], content: Optional[str] = None) -> tuple[str, list[str]]:
     """
     Convert markdown chapter to XHTML and process images.
     Returns tuple of (XHTML content, list of images referenced in chapter)
+    
+    Args:
+        work_dir: Working directory containing markdown files
+        md_filename: Name of markdown file
+        css_filenames: List of CSS files to include
+        content: Optional pre-loaded markdown content. If None, content is read from file
     """
     work_dir_path = Path(work_dir)
     
-    with open(work_dir_path / md_filename, "r", encoding="utf-8") as f:
-        markdown_data = f.read()
+    if content is None:
+        with open(work_dir_path / md_filename, "r", encoding="utf-8") as f:
+            markdown_data = f.read()
+    else:
+        markdown_data = content
     
     # Process markdown for images and get list of referenced images
     markdown_data, chapter_images = process_markdown_for_images(markdown_data, work_dir_path)
@@ -502,45 +577,44 @@ def main(args):
     css_dir = os.path.join(work_dir, 'css/')
 
     try:
-        # Reading the JSON file containing the description of the eBook
+        # Reading/Creating the JSON file containing the description of the eBook
         description_path = os.path.join(work_dir, "description.json")
-        if not os.path.exists(description_path):
-            json_data = {
-                "metadata": {
-                    "dc:title": os.path.basename(work_dir),
-                    "dc:creator": "Unknown Author",
-                    "dc:identifier": "id-1",
-                    "dc:language": "en",
-                    "dc:rights": "All rights reserved",
-                    "dc:publisher": "PDF2EPUB",
-                    "dc:date": ""
-                },
-                "default_css": ["style.css"],
-                "chapters": [],
-                "cover_image": None
-            }
-            
-            # Find all markdown files
+        existing_metadata = {}
+        
+        if os.path.exists(description_path):
+            with open(description_path, 'r', encoding='utf-8') as f:
+                existing_metadata = json.load(f)
+        
+        # Get metadata from user
+        json_data = get_metadata_from_user(existing_metadata)
+        
+        # Find all markdown files if not already in metadata
+        if not json_data["chapters"]:
             markdown_files = [f for f in os.listdir(work_dir) if f.endswith('.md')]
             for md_file in sorted(markdown_files):
                 json_data["chapters"].append({
                     "markdown": md_file,
                     "css": ""
                 })
-            
-            # Save the generated description.json
-            with open(description_path, 'w', encoding='utf-8') as f:
-                json.dump(json_data, f, indent=2)
-        else:
-            with open(description_path, 'r', encoding='utf-8') as f:
-                json_data = json.load(f)
+        
+        # Save the updated description.json
+        with open(description_path, 'w', encoding='utf-8') as f:
+            json.dump(json_data, f, indent=2)
+        
+        # Review markdown files and store updated content
+        chapter_contents = {}
+        for chapter in json_data["chapters"]:
+            md_path = Path(work_dir) / chapter["markdown"]
+            should_continue, content = review_markdown(md_path)
+            if not should_continue:
+                print("\nConversion aborted by user.")
+                return
+            chapter_contents[chapter["markdown"]] = content
 
         # Get title and author
         title = json_data["metadata"].get("dc:title", "Untitled Document")
         authors = json_data["metadata"].get("dc:creator", None)
         
-        # Create cover page HTML
-        coverpage_data = get_coverpage_XML(title)
 
         # Compile list of files
         all_md_filenames = []
@@ -571,19 +645,26 @@ def main(args):
                 ), 
                 zipfile.ZIP_DEFLATED
             )
-
+            # Create cover page HTML
+            coverpage_data = get_coverpage_XML(title, authors)
             # Write cover page
             epub.writestr("OPS/titlepage.xhtml", coverpage_data.encode('utf-8'), zipfile.ZIP_DEFLATED)
 
             all_referenced_images = set()
 
-            # Write chapters
+            # Write chapters using updated content
             for i, chapter in enumerate(json_data["chapters"]):
                 css_files = json_data["default_css"][:]
                 if chapter["css"]:
                     css_files.append(chapter["css"])
                     
-                chapter_data, chapter_images = get_chapter_XML(work_dir, chapter["markdown"], css_files)
+                # Use the updated content from review
+                chapter_data, chapter_images = get_chapter_XML(
+                    work_dir, 
+                    chapter["markdown"], 
+                    css_files,
+                    content=chapter_contents[chapter["markdown"]]
+                )
                 all_referenced_images.update(chapter_images)
                 
                 epub.writestr(
@@ -643,53 +724,53 @@ def main(args):
                             epub.writestr(f"OPS/css/{css}", f.read(), zipfile.ZIP_DEFLATED)
                     else:
                         # Create default CSS if file doesn't exist
-                            default_css = """
-                            @page { margin: 5%; }
-                            html { font-size: 100%; }
-                            body { 
-                                margin: 0 auto;
-                                max-width: 45em;
-                                padding: 0.5em 1em;
-                                text-align: justify;
-                                font-family: serif;
-                                font-size: 1rem;
-                                line-height: 1.5;
-                                color: #222;
-                            }
-                            h1, h2, h3, h4, h5, h6 { 
-                                text-align: left;
-                                color: #333;
-                                line-height: 1.2;
-                                margin: 1.5em 0 0.5em 0;
-                            }
-                            h1 { font-size: 1.5em; margin-top: 2em; }
-                            h2 { font-size: 1.3em; }
-                            h3 { font-size: 1.2em; }
-                            p { 
-                                margin: 0.75em 0;
-                                line-height: 1.6;
-                            }
-                            img { 
-                                max-width: 100%; 
-                                height: auto;
-                                display: block;
-                                margin: 1em auto;
-                            }
-                            .title { 
-                                font-size: 1.8em;
-                                font-weight: bold;
-                                text-align: center;
-                                margin: 2em 0 1em 0;
-                            }
-                            .authors { 
-                                font-size: 1.1em;
-                                text-align: center;
-                                font-style: italic;
-                                margin-bottom: 2em;
-                                color: #555;
-                            }
+                        default_css = """
+                        @page { margin: 5%; }
+                        html { font-size: 100%; }
+                        body { 
+                            margin: 0 auto;
+                            max-width: 45em;
+                            padding: 0.5em 1em;
+                            text-align: justify;
+                            font-family: serif;
+                            font-size: 1rem;
+                            line-height: 1.5;
+                            color: #222;
+                        }
+                        h1, h2, h3, h4, h5, h6 { 
+                            text-align: left;
+                            color: #333;
+                            line-height: 1.2;
+                            margin: 1.5em 0 0.5em 0;
+                        }
+                        h1 { font-size: 1.5em; margin-top: 2em; }
+                        h2 { font-size: 1.3em; }
+                        h3 { font-size: 1.2em; }
+                        p { 
+                            margin: 0.75em 0;
+                            line-height: 1.6;
+                        }
+                        img { 
+                            max-width: 100%; 
+                            height: auto;
+                            display: block;
+                            margin: 1em auto;
+                        }
+                        .title { 
+                            font-size: 1.8em;
+                            font-weight: bold;
+                            text-align: center;
+                            margin: 2em 0 1em 0;
+                        }
+                        .authors { 
+                            font-size: 1.1em;
+                            text-align: center;
+                            font-style: italic;
+                            margin-bottom: 2em;
+                            color: #555;
+                        }
                         """
-                            epub.writestr(f"OPS/css/{css}", default_css.encode('utf-8'), zipfile.ZIP_DEFLATED)
+                        epub.writestr(f"OPS/css/{css}", default_css.encode('utf-8'), zipfile.ZIP_DEFLATED)
 
         print(f"EPUB creation complete: {output_path}")
         
