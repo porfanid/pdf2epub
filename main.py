@@ -3,8 +3,9 @@ import argparse
 from pathlib import Path
 import sys
 import json
-from marker.convert import convert_single_pdf
-from marker.models import load_all_models
+import marker 
+from PIL import Image
+import io
 
 def get_default_output_dir(input_path: Path) -> Path:
     """
@@ -22,6 +23,74 @@ def get_default_input_dir() -> Path:
     input_dir.mkdir(exist_ok=True)
     return input_dir
 
+
+def save_images(images: dict, image_dir: Path) -> None:
+    """
+    Save images with proper error handling and format detection.
+    
+    Args:
+        images: Dictionary of images from marker-pdf conversion
+        image_dir: Directory to save images to
+    """
+    
+    if not images:
+        print("No images found in document")
+        return
+        
+    image_dir.mkdir(exist_ok=True)
+    saved_count = 0
+    
+    for idx, image_data in enumerate(images.values()):
+        try:
+            # Skip if image data is None or empty
+            if not image_data:
+                continue
+                
+            image_path = image_dir / f"image_{idx}.png"
+            
+            # Handle different image data formats
+            if isinstance(image_data, Image.Image):
+                try:
+                    # Save PIL Image directly
+                    image_data.save(image_path)
+                    saved_count += 1
+                except Exception as e:
+                    print(f"Error saving PIL Image {idx}: {str(e)}")
+                    continue
+                    
+            elif isinstance(image_data, bytes):
+                try:
+                    img = Image.open(io.BytesIO(image_data))
+                    img.save(image_path)
+                    saved_count += 1
+                except Exception as e:
+                    print(f"Error processing bytes image {idx}: {str(e)}")
+                    continue
+                    
+            elif isinstance(image_data, str):
+                try:
+                    if Path(image_data).exists():
+                        img = Image.open(image_data)
+                        img.save(image_path)
+                        saved_count += 1
+                    else:
+                        print(f"Image path does not exist for image {idx}: {image_data}")
+                except Exception as e:
+                    print(f"Error processing string image path {idx}: {str(e)}")
+                    continue
+            else:
+                print(f"Unsupported image data type for image {idx}: {type(image_data)}")
+                continue
+                
+        except Exception as e:
+            print(f"Error saving image {idx}: {str(e)}")
+            continue
+            
+    if saved_count > 0:
+        print(f"Successfully saved {saved_count} images to: {image_dir}")
+    else:
+        print("No valid images were found to save")
+
 def convert_pdf(
     input_path: str,
     output_dir: Path,
@@ -31,18 +100,13 @@ def convert_pdf(
     langs: str = None
 ) -> None:
     """
-    Convert a single PDF file to markdown format.
-    
-    Args:
-        input_path: Path to the input PDF file
-        output_dir: Directory where output files will be saved
-        batch_multiplier: Multiplier for batch size (higher uses more memory but processes faster)
-        max_pages: Maximum number of pages to process (None for all pages)
-        start_page: Page number to start from (None for first page)
-        langs: Comma-separated list of languages in the document
+    Convert a single PDF file to markdown format with enhanced image handling.
     """
     try:
         # Load models
+        from marker.models import load_all_models
+        from marker.convert import convert_single_pdf
+        
         model_lst = load_all_models()
         
         # Convert languages string to list if provided
@@ -72,19 +136,22 @@ def convert_pdf(
             json.dump(metadata, f, indent=2)
         print(f"Metadata saved to: {meta_output}")
         
-        # Handle images if present
-        if images:
-            image_dir = output_dir / "images"
-            image_dir.mkdir(exist_ok=True)
-            
-            for idx, image_data in enumerate(images.values()):
-                image_path = image_dir / f"image_{idx}.png"
-                if isinstance(image_data, (str, bytes)):
-                    mode = 'wb' if isinstance(image_data, bytes) else 'w'
-                    with open(image_path, mode) as f:
-                        f.write(image_data)
-            
-            print(f"Images saved to: {image_dir}")
+        # Enhanced image handling
+        try:
+            if images:
+                image_dir = output_dir / "images"
+                save_images(images, image_dir)
+                
+                # Cleanup PIL Images
+                for img in images.values():
+                    if isinstance(img, Image.Image):
+                        try:
+                            img.close()
+                        except Exception as e:
+                            print(f"Warning: Failed to close image: {e}")
+                images.clear()  # Clear the dictionary to help with cleanup
+        except Exception as e:
+            print(f"Warning: Error during image cleanup: {e}")
             
     except Exception as e:
         print(f"Error converting {input_path}: {str(e)}", file=sys.stderr)

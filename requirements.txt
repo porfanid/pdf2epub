@@ -1,2 +1,3 @@
 marker-pdf
 transformers==4.45.2
+pillow
