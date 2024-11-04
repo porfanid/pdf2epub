@@ -6,6 +6,22 @@ import json
 from marker.convert import convert_single_pdf
 from marker.models import load_all_models
 
+def get_default_output_dir(input_path: Path) -> Path:
+    """
+    Generate default output directory path based on input PDF path.
+    Creates a directory with same name as PDF (without extension) next to the PDF.
+    """
+    return input_path.parent / input_path.stem
+
+def get_default_input_dir() -> Path:
+    """
+    Get default input directory (./input) relative to current working directory.
+    Creates it if it doesn't exist.
+    """
+    input_dir = Path.cwd() / 'input'
+    input_dir.mkdir(exist_ok=True)
+    return input_dir
+
 def convert_pdf(
     input_path: str,
     output_dir: Path,
@@ -30,7 +46,7 @@ def convert_pdf(
         model_lst = load_all_models()
         
         # Convert languages string to list if provided
-        languages = langs.split(',') if langs else None
+        languages = [lang.strip() for lang in langs.split(',')] if langs else None
         
         # Convert the PDF
         full_text, images, metadata = convert_single_pdf(
@@ -42,23 +58,23 @@ def convert_pdf(
             langs=languages
         )
         
-        # Create output paths
-        input_filename = Path(input_path).stem
-        md_output = output_dir / f"{input_filename}.md"
-        meta_output = output_dir / f"{input_filename}_metadata.json"
+        # All output will go to the output directory
+        output_dir.mkdir(parents=True, exist_ok=True)
         
         # Save markdown content
+        md_output = output_dir / f"{Path(input_path).stem}.md"
         md_output.write_text(full_text, encoding='utf-8')
         print(f"Markdown saved to: {md_output}")
         
         # Save metadata as JSON
+        meta_output = output_dir / f"{Path(input_path).stem}_metadata.json"
         with open(meta_output, 'w', encoding='utf-8') as f:
             json.dump(metadata, f, indent=2)
         print(f"Metadata saved to: {meta_output}")
         
         # Handle images if present
         if images:
-            image_dir = output_dir / f"{input_filename}_images"
+            image_dir = output_dir / "images"
             image_dir.mkdir(exist_ok=True)
             
             for idx, image_data in enumerate(images.values()):
@@ -74,19 +90,45 @@ def convert_pdf(
         print(f"Error converting {input_path}: {str(e)}", file=sys.stderr)
         sys.exit(1)
 
+def get_input_path(path_arg: str | None) -> Path:
+    """
+    Determine input path based on argument or default directory.
+    """
+    if path_arg:
+        path = Path(path_arg)
+        # If it's a directory, look for PDFs in it
+        if path.is_dir():
+            pdfs = list(path.glob('*.pdf'))
+            if not pdfs:
+                print(f"No PDF files found in directory: {path}", file=sys.stderr)
+                sys.exit(1)
+            return pdfs[0]  # Return first PDF found
+        return path
+    else:
+        # Use default input directory
+        input_dir = get_default_input_dir()
+        pdfs = list(input_dir.glob('*.pdf'))
+        if not pdfs:
+            print(f"No PDF files found in default input directory: {input_dir}", file=sys.stderr)
+            print("Please place PDF files in the 'input' directory or specify an input path.", file=sys.stderr)
+            sys.exit(1)
+        return pdfs[0]  # Return first PDF found
+
 def main():
     parser = argparse.ArgumentParser(
         description='Convert PDF files to Markdown format using marker-pdf'
     )
     parser.add_argument(
         'input_path',
+        nargs='?',  # Make argument optional
         type=str,
-        help='Path to input PDF file'
+        help='Path to input PDF file or directory (default: ./input/*.pdf)'
     )
     parser.add_argument(
         'output_path',
+        nargs='?',  # Make argument optional
         type=str,
-        help='Path to output directory for markdown files'
+        help='Path to output directory (default: directory named after PDF)'
     )
     parser.add_argument(
         '--batch-multiplier',
@@ -115,9 +157,8 @@ def main():
     
     args = parser.parse_args()
     
-    # Convert paths to Path objects
-    input_path = Path(args.input_path)
-    output_path = Path(args.output_path)
+    # Get input path (with smart defaults)
+    input_path = get_input_path(args.input_path)
     
     # Validate input file
     if not input_path.is_file():
@@ -126,9 +167,9 @@ def main():
     if input_path.suffix.lower() != '.pdf':
         print(f"Error: Input file must be a PDF: {input_path}", file=sys.stderr)
         sys.exit(1)
-        
-    # Create output directory
-    output_path.mkdir(parents=True, exist_ok=True)
+    
+    # Get output directory (with smart defaults)
+    output_path = Path(args.output_path) if args.output_path else get_default_output_dir(input_path)
     
     # Convert the PDF
     convert_pdf(
