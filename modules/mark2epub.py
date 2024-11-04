@@ -473,6 +473,23 @@ def get_metadata_with_user_input(metadata_file: Path) -> dict:
     
     return metadata
 
+def convert_to_epub(markdown_dir: Path, output_path: Path) -> None:
+    """
+    Convert markdown files and images to EPUB format.
+    """
+    if not markdown_dir.exists():
+        raise FileNotFoundError(f"Markdown directory not found: {markdown_dir}")
+        
+    if not list(markdown_dir.glob('*.md')):
+        raise ValueError(f"No markdown files found in: {markdown_dir}")
+    
+    # Set up mark2epub's working directory
+    work_dir = str(markdown_dir)
+    
+    # Generate EPUB file
+    epub_path = markdown_dir / f"{markdown_dir.name}.epub"
+    main([str(markdown_dir), str(epub_path)])
+
 def main(args):
     if len(args) < 2:
         print("\nUsage:\n    python md2epub.py <markdown_directory> <output_file.epub>")

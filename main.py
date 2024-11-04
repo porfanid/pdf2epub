@@ -4,26 +4,6 @@ from pathlib import Path
 import modules.pdf2md as pdf2md
 import modules.mark2epub as mark2epub
 import torch
-
-
-
-def convert_to_epub(markdown_dir: Path, output_path: Path) -> None:
-    """
-    Convert markdown files and images to EPUB format.
-    """
-    if not markdown_dir.exists():
-        raise FileNotFoundError(f"Markdown directory not found: {markdown_dir}")
-        
-    if not list(markdown_dir.glob('*.md')):
-        raise ValueError(f"No markdown files found in: {markdown_dir}")
-    
-
-    # Set up mark2epub's working directory
-    mark2epub.work_dir = str(markdown_dir)
-    
-    # Generate EPUB file
-    epub_path = markdown_dir / f"{markdown_dir.name}.epub"
-    mark2epub.main([str(markdown_dir), str(epub_path)])
                 
 
 
@@ -127,7 +107,7 @@ def main():
             # Convert Markdown to EPUB unless skipped
             if not args.skip_epub:
                 print("Converting Markdown to EPUB...")
-                convert_to_epub(markdown_dir, output_path)
+                mark2epub.convert_to_epub(markdown_dir, output_path)
                 
         except Exception as e:
             print(f"Error processing {pdf_path.name}: {str(e)}")
