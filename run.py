@@ -7,70 +7,44 @@ from typing import Optional
 from marker.convert import convert_single_pdf
 from marker.models import load_all_models
 import json
+import torch
+import transformers
 
-def setup_argparse() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(
-        description='Convert PDF files to Markdown format using marker-pdf',
-        formatter_class=argparse.ArgumentDefaultsHelpFormatter
-    )
-    parser.add_argument(
-        'input_path',
-        type=str,
-        help='Path to input PDF file or directory containing PDFs'
-    )
-    parser.add_argument(
-        'output_path',
-        type=str,
-        help='Path to output directory for markdown files'
-    )
-    parser.add_argument(
-        '--batch-multiplier',
-        type=int,
-        default=2,
-        help='Multiplier for batch size (higher uses more VRAM but processes faster)'
-    )
-    parser.add_argument(
-        '--max-pages',
-        type=int,
-        default=None,
-        help='Maximum number of pages to process (default: process all pages)'
-    )
-    parser.add_argument(
-        '--start-page',
-        type=int,
-        default=None,
-        help='Page number to start from (default: start from first page)'
-    )
-    parser.add_argument(
-        '--langs',
-        type=str,
-        default=None,
-        help='Comma-separated list of languages in the document (e.g., "English,Spanish")'
-    )
-    return parser
+def setup_environment():
+    """Set up the environment variables and configurations needed."""
+    # Force CPU usage and set appropriate configurations
+    os.environ["CUDA_VISIBLE_DEVICES"] = ""  # Disable CUDA
+    os.environ["TOKENIZERS_PARALLELISM"] = "false"
+    os.environ["TRANSFORMERS_ATTENTION_IMPLEMENTATION"] = "eager"
+    # Set lower torch threads for CPU
+    torch.set_num_threads(4)
+    # Reduce logging noise
+    transformers.utils.logging.set_verbosity_error()
+
+def get_device_settings():
+    """Configure device-specific settings."""
+    device = torch.device('cpu')
+    # Use float32 for CPU
+    dtype = torch.float32
+    return device, dtype
 
 def convert_pdf(
     input_path: str,
     output_dir: Path,
-    batch_multiplier: int = 2,
+    batch_multiplier: int = 1,  # Reduced default for CPU
     max_pages: Optional[int] = None,
     start_page: Optional[int] = None,
     langs: Optional[str] = None
 ) -> None:
     """
     Convert a single PDF file to markdown format.
-    
-    Args:
-        input_path: Path to the input PDF file
-        output_dir: Directory where markdown and metadata will be saved
-        batch_multiplier: Multiplier for batch size
-        max_pages: Maximum number of pages to process
-        start_page: Page number to start from
-        langs: Comma-separated list of languages
     """
     try:
-        # Load models
-        model_lst = load_all_models()
+        # Set device specific settings
+        device, dtype = get_device_settings()
+        
+        # Load models with specific device and dtype
+        model_lst = load_all_models(device=device, dtype=dtype)
         
         # Convert languages string to list if provided
         languages = langs.split(',') if langs else None
@@ -98,11 +72,27 @@ def convert_pdf(
         
         # Save images if any
         if images:
+            print(f"Found {len(images)} images")
+            print(f"Image types: {[type(img) for img in images]}")
+            print(f"First image sample: {str(images[0])[:100] if images else 'No images'}")
             image_dir = output_dir / f"{input_filename}_images"
             image_dir.mkdir(exist_ok=True)
             for idx, img in enumerate(images):
                 img_path = image_dir / f"image_{idx}.png"
-                img.save(img_path)
+                # Handle different types of image data
+                if hasattr(img, 'save'):
+                    # PIL Image object
+                    img.save(img_path)
+                elif isinstance(img, str):
+                    # String path or data
+                    with open(img_path, 'w', encoding='utf-8') as f:
+                        f.write(img)
+                elif isinstance(img, bytes):
+                    # Binary data
+                    with open(img_path, 'wb') as f:
+                        f.write(img)
+                else:
+                    print(f"Warning: Skipping image {idx} - unsupported format: {type(img)}")
         
         print(f"Successfully converted {input_path}")
         print(f"Markdown saved to: {md_output}")
@@ -112,7 +102,51 @@ def convert_pdf(
         print(f"Error converting {input_path}: {str(e)}", file=sys.stderr)
         raise
 
+def setup_argparse() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        description='Convert PDF files to Markdown format using marker-pdf',
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter
+    )
+    parser.add_argument(
+        'input_path',
+        type=str,
+        help='Path to input PDF file or directory containing PDFs'
+    )
+    parser.add_argument(
+        'output_path',
+        type=str,
+        help='Path to output directory for markdown files'
+    )
+    parser.add_argument(
+        '--batch-multiplier',
+        type=int,
+        default=1,  # Reduced default for CPU
+        help='Multiplier for batch size (higher uses more memory but processes faster)'
+    )
+    parser.add_argument(
+        '--max-pages',
+        type=int,
+        default=None,
+        help='Maximum number of pages to process (default: process all pages)'
+    )
+    parser.add_argument(
+        '--start-page',
+        type=int,
+        default=None,
+        help='Page number to start from (default: start from first page)'
+    )
+    parser.add_argument(
+        '--langs',
+        type=str,
+        default=None,
+        help='Comma-separated list of languages in the document (e.g., "English,Spanish")'
+    )
+    return parser
+
 def main():
+    # Set up environment before anything else
+    setup_environment()
+    
     parser = setup_argparse()
     args = parser.parse_args()
     

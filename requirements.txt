@@ -1,10 +1,2 @@
-wisup_e2m
-pyyaml
-unstructured[pdf]
-unstructured-inference
-pytesseract
-pdfminer.six
-pillow
-matplotlib
-pathlib
-typing
+marker-pdf
+transformers==4.45.2
