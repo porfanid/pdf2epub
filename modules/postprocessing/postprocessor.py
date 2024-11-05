@@ -193,16 +193,16 @@ class MarkdownPostprocessor:
                     self.logger.info("Skipping low severity pattern (logging only)")
             
             # Only write if changes were made
-            if content != original_content:
-                # Write to temporary file first
-                temp_output = Path(str(self.input_path) + '.tmp')
-                with open(temp_output, 'w', encoding='utf-8') as f:
-                    f.write(content)
-                
-                # Replace original file
-                temp_output.replace(self.input_path)
-                
-                self.logger.info(f"Applied {patterns_applied} patterns successfully")
+            #if content != original_content:
+            # Write to temporary file first
+            temp_output = Path(str(self.input_path) + '.tmp')
+            with open(temp_output, 'w', encoding='utf-8') as f:
+                f.write(content)
+            
+            # Replace original file
+            temp_output.replace(self.input_path)
+            
+            self.logger.info(f"Applied {patterns_applied} patterns successfully")
                 
             # Remove backup if everything succeeded
             if self.backup_path:

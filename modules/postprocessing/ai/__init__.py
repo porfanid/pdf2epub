@@ -51,7 +51,7 @@ class AIPostprocessor:
         except Exception as e:
             raise RuntimeError(f"Failed to read prompt.txt: {e}")
 
-    def _get_markdown_sample(self, markdown_path: Path, max_tokens: int = 1000) -> str:
+    def _get_markdown_sample(self, markdown_path: Path, max_tokens: int = 50000) -> str:
         """Get a sample of the markdown file up to max_tokens."""
         try:
             if not markdown_path.exists():
@@ -86,20 +86,28 @@ class AIPostprocessor:
 
             # Create the message for Claude
             self.logger.info("Sending request to Claude...")
-            message = self.client.messages.create(
+            message = self.client.beta.prompt_caching.messages.create(
                 model="claude-3-5-haiku-20241022",
                 max_tokens=8192,
                 temperature=0,
                 system=system_prompt,
                 messages=[
-                    {"role": "user", "content": markdown_sample}
+                    {"role": "user", "content": [
+                        {
+                            "type": "text",
+                            "text": markdown_sample
+                        }
+                    ]}
                 ]
+            
             )
-
+            #print(markdown_sample)
+            #print(message)
             # Parse Claude's response as JSON
             try:
 # Clean up the response text
-                response_text = message.content[0].text                
+                response_text = message.content[0].text
+                print(response_text)                
                 # Parse JSON first to get the structure
                 patterns = json.loads(response_text)
             
