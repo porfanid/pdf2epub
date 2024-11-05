@@ -3,9 +3,8 @@ import argparse
 from pathlib import Path
 import modules.pdf2md as pdf2md
 import modules.mark2epub as mark2epub
+from modules.postprocessing.ai import AIPostprocessor
 import torch
-                
-
 
 def main():
     if torch.cuda.is_available():
@@ -14,7 +13,7 @@ def main():
         print("CUDA is not available. Using CPU for processing.")
         
     parser = argparse.ArgumentParser(
-        description='Convert PDF files to EPUB format via Markdown'
+        description='Convert PDF files to EPUB format via Markdown with optional AI postprocessing'
     )
     parser.add_argument(
         'input_path',
@@ -62,6 +61,11 @@ def main():
         action='store_true',
         help='Skip markdown generation, use existing markdown files'
     )
+    parser.add_argument(
+        '--skip-ai',
+        action='store_true',
+        help='Skip AI postprocessing step'
+    )
     
     args = parser.parse_args()
     
@@ -103,6 +107,27 @@ def main():
                     args.start_page,
                     args.langs
                 )
+            
+            # Handle AI postprocessing if not skipped
+            if not args.skip_ai:
+                try:
+                    markdown_file = markdown_dir / f"{pdf_path.stem}.md"
+                    if markdown_file.exists():
+                        print("\nInitiating AI postprocessing analysis...")
+                        ai_processor = AIPostprocessor(markdown_dir)
+                        should_process, json_path = ai_processor.analyze_with_claude(markdown_file)
+                        
+                        if should_process and json_path:
+                            print("Running AI postprocessing...")
+                            if not ai_processor.run_postprocessing(markdown_file, json_path):
+                                print("Warning: AI postprocessing failed, proceeding with original markdown")
+                        else:
+                            print("Skipping AI postprocessing")
+                    else:
+                        print(f"Warning: Markdown file not found for AI processing: {markdown_file}")
+                except Exception as e:
+                    print(f"Error during AI postprocessing: {e}")
+                    print("Proceeding with original markdown")
             
             # Convert Markdown to EPUB unless skipped
             if not args.skip_epub:
