@@ -115,7 +115,7 @@ class AIPostprocessor:
             json_path = self.work_dir / "patterns.json"
             self.logger.info(f"Saving patterns to: {json_path}")
             
-            with open(json_path, 'a', encoding='utf-8') as f:
+            with open(json_path, 'w', encoding='utf-8') as f:
                 json.dump(patterns, f, indent=2)
             self.logger.info("Successfully saved patterns to JSON file")
 
