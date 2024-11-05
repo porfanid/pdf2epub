@@ -1,19 +1,29 @@
 #!/usr/bin/env python3
 import argparse
 from pathlib import Path
+import logging
 import modules.pdf2md as pdf2md
 import modules.mark2epub as mark2epub
 from modules.postprocessing.ai import AIPostprocessor
 import torch
 
 def main():
+    # Configure logging
+    logging.basicConfig(
+        level=logging.INFO,
+        format='%(asctime)s - %(levelname)s - %(message)s'
+    )
+    logger = logging.getLogger(__name__)
+
+    # Check CUDA availability
     if torch.cuda.is_available():
-        print("CUDA is available. Using GPU for processing.")
+        logger.info("CUDA is available. Using GPU for processing.")
     else:
-        print("CUDA is not available. Using CPU for processing.")
+        logger.info("CUDA is not available. Using CPU for processing.")
         
+    # Set up argument parser
     parser = argparse.ArgumentParser(
-        description='Convert PDF files to EPUB format via Markdown with optional AI postprocessing'
+        description='Convert PDF files to EPUB format via Markdown with AI postprocessing'
     )
     parser.add_argument(
         'input_path',
@@ -66,6 +76,13 @@ def main():
         action='store_true',
         help='Skip AI postprocessing step'
     )
+    parser.add_argument(
+        '--ai-provider',
+        type=str,
+        default='anthropic',
+        choices=['anthropic'],
+        help='AI provider to use for postprocessing'
+    )
     
     args = parser.parse_args()
     
@@ -74,11 +91,11 @@ def main():
     
     # Get queue of PDFs to process
     queue = pdf2md.add_pdfs_to_queue(input_path)
-    print(f"Found {len(queue)} PDF files to process")
+    logger.info(f"Found {len(queue)} PDF files to process")
     
     # Process each PDF
     for pdf_path in queue:
-        print(f"\nProcessing: {pdf_path.name}")
+        logger.info(f"\nProcessing: {pdf_path.name}")
         
         # Get output directory for this PDF
         if args.output_path:
@@ -92,13 +109,13 @@ def main():
             # Check if markdown directory exists when skipping MD generation
             if args.skip_md:
                 if not markdown_dir.exists():
-                    print(f"Error: Markdown directory not found: {markdown_dir}")
+                    logger.error(f"Error: Markdown directory not found: {markdown_dir}")
                     continue
-                print(f"Using existing markdown files from: {markdown_dir}")
+                logger.info(f"Using existing markdown files from: {markdown_dir}")
                 
             # Convert PDF to Markdown unless skipped
             if not args.skip_md:
-                print("Converting PDF to Markdown...")
+                logger.info("Converting PDF to Markdown...")
                 pdf2md.convert_pdf(
                     str(pdf_path),
                     markdown_dir,
@@ -113,29 +130,30 @@ def main():
                 try:
                     markdown_file = markdown_dir / f"{pdf_path.stem}.md"
                     if markdown_file.exists():
-                        print("\nInitiating AI postprocessing analysis...")
-                        ai_processor = AIPostprocessor(markdown_dir)
-                        should_process, json_path = ai_processor.analyze_with_claude(markdown_file)
+                        logger.info("\nInitiating AI postprocessing analysis...")
+                        processor = AIPostprocessor(markdown_dir)
                         
-                        if should_process and json_path:
-                            print("Running AI postprocessing...")
-                            if not ai_processor.run_postprocessing(markdown_file, json_path):
-                                print("Warning: AI postprocessing failed, proceeding with original markdown")
-                        else:
-                            print("Skipping AI postprocessing")
+                        # Run AI postprocessing
+                        processor.run_postprocessing(
+                            markdown_path=markdown_file,
+                            ai_provider=args.ai_provider
+                        )
+                        
+                        logger.info("AI postprocessing completed successfully")
                     else:
-                        print(f"Warning: Markdown file not found for AI processing: {markdown_file}")
+                        logger.warning(f"Warning: Markdown file not found for AI processing: {markdown_file}")
                 except Exception as e:
-                    print(f"Error during AI postprocessing: {e}")
-                    print("Proceeding with original markdown")
+                    logger.error(f"Error during AI postprocessing: {e}")
+                    logger.info("Proceeding with original markdown")
             
             # Convert Markdown to EPUB unless skipped
             if not args.skip_epub:
-                print("Converting Markdown to EPUB...")
+                logger.info("Converting Markdown to EPUB...")
                 mark2epub.convert_to_epub(markdown_dir, output_path)
+                logger.info("EPUB conversion completed")
                 
         except Exception as e:
-            print(f"Error processing {pdf_path.name}: {str(e)}")
+            logger.error(f"Error processing {pdf_path.name}: {str(e)}")
             continue
 
 if __name__ == '__main__':

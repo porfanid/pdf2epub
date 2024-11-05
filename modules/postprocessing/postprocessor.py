@@ -28,33 +28,33 @@ class MarkdownPostprocessor:
         )
         self.logger = logging.getLogger(__name__)
         
-    def _create_backup(self) -> None:
-        """Create a backup of the original file."""
-        try:
+    #def _create_backup(self) -> None:
+    #    """Create a backup of the original file."""
+    #    try:
             # Create temporary backup
-            with tempfile.NamedTemporaryFile(delete=False) as tmp:
-                self.backup_path = Path(tmp.name)
-                shutil.copy2(self.input_path, self.backup_path)
-            self.logger.info(f"Created backup at {self.backup_path}")
-        except Exception as e:
-            self.logger.error(f"Failed to create backup: {e}")
-            raise
+    #        with tempfile.NamedTemporaryFile(delete=False) as tmp:
+    #            self.backup_path = Path(tmp.name)
+    #            shutil.copy2(self.input_path, self.backup_path)
+    #        self.logger.info(f"Created backup at {self.backup_path}")
+    #    except Exception as e:
+    #        self.logger.error(f"Failed to create backup: {e}")
+    #        raise
 
-    def _restore_from_backup(self) -> None:
-        """Restore the original file from backup if something goes wrong."""
-        if self.backup_path and self.backup_path.exists():
-            try:
-                shutil.copy2(self.backup_path, self.input_path)
-                self.logger.info("Successfully restored from backup")
-            except Exception as e:
-                self.logger.error(f"Failed to restore from backup: {e}")
-                raise
-            finally:
-                try:
-                    self.backup_path.unlink()
-                    self.backup_path = None
-                except Exception as e:
-                    self.logger.error(f"Failed to remove backup file: {e}")
+    #def _restore_from_backup(self) -> None:
+    #    """Restore the original file from backup if something goes wrong."""
+    #    if self.backup_path and self.backup_path.exists():
+    #        try:
+    #            shutil.copy2(self.backup_path, self.input_path)
+    #            self.logger.info("Successfully restored from backup")
+    #        except Exception as e:
+    #            self.logger.error(f"Failed to restore from backup: {e}")
+    #            raise
+    #        finally:
+    #            try:
+    #                self.backup_path.unlink()
+    #                self.backup_path = None
+    #            except Exception as e:
+    #                self.logger.error(f"Failed to remove backup file: {e}")
 
     def _validate_pattern(self, pattern: Dict) -> bool:
         """
@@ -132,20 +132,19 @@ class MarkdownPostprocessor:
 
     def process_file(self) -> bool:
         """
-        Process the markdown file using the provided patterns.
+        Process the markdown file using the patterns.json.
         
         Returns:
             bool: True if processing was successful, False otherwise
         """
         try:
             # Create backup first
-            self._create_backup()
+            #self._create_backup()
             
             # Read input file
             with open(self.input_path, 'r', encoding='utf-8') as f:
                 content = f.read()
             
-            original_content = content
             patterns_applied = 0
             
             # Process each pattern
@@ -153,7 +152,7 @@ class MarkdownPostprocessor:
                 if not self._validate_pattern(pattern):
                     continue
                     
-# Apply pattern based on severity
+            # Apply pattern based on severity
                 self.logger.info(f"Processing pattern: {pattern}")
                 
                 matches = list(re.finditer(pattern['regex'], content))
@@ -213,15 +212,15 @@ class MarkdownPostprocessor:
             
         except Exception as e:
             self.logger.error(f"Error processing file: {e}")
-            self._restore_from_backup()
+            #self._restore_from_backup()
             return False
 
-def process_markdown(markdown_path: str, json_path: str) -> bool:
+def process_markdown(markdown_dir: str, json_path: str) -> bool:
     """
     Process a markdown file using patterns from a JSON file.
     
     Args:
-        markdown_path: Path to the markdown file to process
+        markdown_dir: Path to the directory containing the markdown file
         json_path: Path to the JSON file containing patterns
         
     Returns:
@@ -236,12 +235,21 @@ def process_markdown(markdown_path: str, json_path: str) -> bool:
         logger = logging.getLogger(__name__)
         
         logger.info(f"Starting markdown processing")
-        logger.info(f"Markdown file: {markdown_path}")
+        
+        # Get the markdown directory path
+        markdown_dir_path = Path(markdown_dir)
+        if not markdown_dir_path.exists():
+            raise FileNotFoundError(f"Markdown directory not found: {markdown_dir}")
+            
+        # Find all markdown files in the directory
+        markdown_files = list(markdown_dir_path.glob("*.md"))
+        if not markdown_files:
+            raise FileNotFoundError(f"No markdown files found in directory: {markdown_dir}")
+            
+        logger.info(f"Found {len(markdown_files)} markdown files to process")
         logger.info(f"JSON patterns file: {json_path}")
         
-        # Verify files exist
-        if not Path(markdown_path).exists():
-            raise FileNotFoundError(f"Markdown file not found: {markdown_path}")
+        # Verify JSON file exists
         if not Path(json_path).exists():
             raise FileNotFoundError(f"JSON patterns file not found: {json_path}")
             
@@ -250,33 +258,24 @@ def process_markdown(markdown_path: str, json_path: str) -> bool:
         with open(json_path, 'r', encoding='utf-8') as f:
             patterns = json.load(f)
         logger.info(f"Loaded {len(patterns.get('patterns', []))} patterns")
-            
-        # Initialize and run processor
-        processor = MarkdownPostprocessor(markdown_path, patterns)
-        success = processor.process_file()
+        
+        success = True
+        # Process each markdown file
+        for markdown_file in markdown_files:
+            logger.info(f"Processing file: {markdown_file.name}")
+            processor = MarkdownPostprocessor(str(markdown_file), patterns)
+            if not processor.process_file():
+                logger.error(f"Failed to process {markdown_file.name}")
+                success = False
         
         if success:
-            logger.info("Processing completed successfully")
+            logger.info("All files processed successfully")
         else:
-            logger.error("Processing failed")
+            logger.error("Some files failed to process")
             
         return success
         
     except Exception as e:
-        logging.error(f"Failed to process markdown: {e}")
+        logger.error(f"Failed to process markdown: {e}")
         return False
 
-def main():
-    parser = argparse.ArgumentParser(description='Post-process markdown files using AI-generated patterns')
-    parser.add_argument('markdown_file', help='Path to the markdown file to process')
-    parser.add_argument('json_file', help='Path to the JSON file containing patterns')
-    
-    args = parser.parse_args()
-    
-    success = process_markdown(args.markdown_file, args.json_file)
-    
-    if not success:
-        exit(1)
-
-if __name__ == '__main__':
-    main()
