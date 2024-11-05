@@ -4,15 +4,12 @@ from xml.dom import minidom
 import zipfile
 import sys
 import json
-from PIL import Image, ImageDraw, ImageFont
-import textwrap
+from PIL import Image
+import regex as re
 from pathlib import Path
-import re
 from datetime import datetime
-from typing import Dict, Optional, Tuple
 import subprocess
-
-## markdown version 3.1
+from typing import Dict, Optional, Tuple
 
 def get_user_input(prompt: str, default: str = "") -> str:
     """Get user input with a default value."""
@@ -20,9 +17,7 @@ def get_user_input(prompt: str, default: str = "") -> str:
     return user_input if user_input else default
 
 def get_metadata_from_user(existing_metadata: Optional[Dict] = None) -> Dict:
-    """
-    Interactively collect metadata from user with defaults from existing metadata.
-    """
+    """Interactively collect metadata from user with defaults from existing metadata."""
     if existing_metadata is None:
         existing_metadata = {}
     
@@ -30,7 +25,6 @@ def get_metadata_from_user(existing_metadata: Optional[Dict] = None) -> Dict:
     
     print("\nPlease provide the following metadata for your EPUB (press Enter to use default value):")
     
-    # Get each metadata field with existing values as defaults
     fields = {
         "dc:title": ("Title", metadata.get("dc:title", "Untitled Document")),
         "dc:creator": ("Author(s)", metadata.get("dc:creator", "Unknown Author")),
@@ -54,27 +48,20 @@ def get_metadata_from_user(existing_metadata: Optional[Dict] = None) -> Dict:
     }
 
 def review_markdown(markdown_path: Path) -> tuple[bool, str]:
-    """
-    Ask user if they want to review the markdown file and open it in default editor if yes.
-    Returns tuple of (should_continue, updated_content)
-    """
+    """Ask user if they want to review the markdown file."""
     content = markdown_path.read_text(encoding='utf-8')
     
     while True:
         response = input("\nWould you like to review the markdown file before conversion? (y/n): ").lower()
         if response in ['y', 'yes']:
             try:
-                if os.name == 'nt':  # Windows
-                    os.startfile(markdown_path)
-                elif os.name == 'posix':  # macOS and Linux
-                    subprocess.run(['xdg-open', str(markdown_path)], check=True)
+                subprocess.run(['xdg-open' if os.name == 'posix' else 'start', str(markdown_path)], check=True)
                 
                 while True:
                     proceed = input("\nPress Enter when you're done editing (or 'q' to abort): ").lower()
                     if proceed == 'q':
                         return False, content
                     elif proceed == '':
-                        # Reload content from file after editing
                         updated_content = markdown_path.read_text(encoding='utf-8')
                         return True, updated_content
             except Exception as e:
@@ -87,35 +74,23 @@ def review_markdown(markdown_path: Path) -> tuple[bool, str]:
             print("Please enter 'y' or 'n'")
 
 def process_markdown_for_images(markdown_text: str, work_dir: Path) -> tuple[str, list[str]]:
-    """
-    Process markdown content to find image references and ensure they are properly formatted for EPUB.
-    Returns modified markdown text and list of image filenames.
-    """
-    print("Started processing markdown for images")
-    
+    """Process markdown content to find image references."""
     image_pattern = r'!\[(.*?)\]\((.*?)\)'
     images_found = []
     modified_text = markdown_text
     
-    # Find all image references in markdown
     for match in re.finditer(image_pattern, markdown_text):
         alt_text, image_path = match.groups()
         image_path = image_path.strip()
-        # Convert path to Path object for manipulation
         img_path = Path(image_path)
-        # Handle both absolute and relative paths
         if img_path.is_absolute():
             rel_path = img_path.relative_to(work_dir)
         else:
             rel_path = img_path
             
-        # Ensure image exists in images directory
         full_image_path = work_dir / 'images' / img_path.name
         if full_image_path.exists():
-            # Add to list of found images
             images_found.append(img_path.name)
-            
-            # Update markdown to use EPUB-friendly path
             new_ref = f'![{alt_text}](images/{img_path.name})'
             modified_text = modified_text.replace(match.group(0), new_ref)
         else:
@@ -124,33 +99,23 @@ def process_markdown_for_images(markdown_text: str, work_dir: Path) -> tuple[str
     return modified_text, images_found
 
 def copy_and_optimize_image(src_path: Path, dest_path: Path, max_dimension: int = 1800) -> None:
-    """
-    Copy image to destination path with optimization for EPUB.
-    Resizes large images and converts to appropriate format.
-    """
-    from PIL import Image
-    import io
-    
+    """Copy image to destination path with optimization for EPUB."""
     try:
         with Image.open(src_path) as img:
-            # Convert RGBA to RGB if needed
             if img.mode == 'RGBA':
                 img = img.convert('RGB')
                 
-            # Calculate new dimensions while maintaining aspect ratio
             ratio = min(max_dimension / max(img.size[0], img.size[1]), 1.0)
             new_size = tuple(int(dim * ratio) for dim in img.size)
             
             if ratio < 1.0:
                 img = img.resize(new_size, Image.Resampling.LANCZOS)
             
-            # Save with appropriate format and compression
             if src_path.suffix.lower() in ['.jpg', '.jpeg']:
                 img.save(dest_path, 'JPEG', quality=85, optimize=True)
             elif src_path.suffix.lower() == '.png':
                 img.save(dest_path, 'PNG', optimize=True)
             else:
-                # Convert other formats to JPEG
                 dest_path = dest_path.with_suffix('.jpg')
                 img.save(dest_path, 'JPEG', quality=85, optimize=True)
                 
@@ -435,114 +400,7 @@ def get_chapter_XML(work_dir: str, md_filename: str, css_filenames: list[str], c
 
     return xhtml, chapter_images
 
-def generate_cover_image(title: str, authors: str, output_path: Path) -> str:
-    """
-    Generate a high-quality cover image with title and authors.
-    Returns the filename of the generated cover image.
-    """
-    from PIL import Image, ImageDraw, ImageFont
-    import textwrap
 
-    # Create a high-resolution image with a white background
-    width = 1800  # Increased resolution
-    height = 2700 # 2:3 aspect ratio (typical book cover)
-    img = Image.new('RGB', (width, height), 'white')
-    draw = ImageDraw.Draw(img)
-
-    try:
-        # Try to load a system font with larger sizes for higher resolution
-        title_font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSerif-Bold.ttf", 160)
-        author_font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSerif.ttf", 120)
-    except OSError:
-        try:
-            # Try alternate font paths
-            title_font = ImageFont.truetype("/Library/Fonts/Georgia Bold.ttf", 160)
-            author_font = ImageFont.truetype("/Library/Fonts/Georgia.ttf", 120)
-        except OSError:
-            # Fallback to default font if system font not available
-            print("Warning: System fonts not found, using default font. Cover quality may be reduced.")
-            title_font = ImageFont.load_default()
-            author_font = ImageFont.load_default()
-
-    # Draw a subtle gradient border
-    border_width = 100
-    for i in range(border_width):
-        # Create a subtle gradient from dark gray to light gray
-        color = (200 + i//2, 200 + i//2, 200 + i//2)
-        draw.rectangle(
-            [i, i, width-1-i, height-1-i], 
-            outline=color, 
-            width=1
-        )
-
-    # Calculate text positions with better margins
-    margin = width // 6  # Larger margins for better aesthetics
-    text_width = width - (2 * margin)
-    title_lines = textwrap.wrap(title, width=25)  # Fewer characters per line for better readability
-    author_lines = textwrap.wrap(authors, width=30)
-
-    # Draw title
-    y = height // 3
-    for line in title_lines:
-        bbox = draw.textbbox((0, 0), line, font=title_font)
-        text_width = bbox[2] - bbox[0]
-        x = (width - text_width) // 2
-        
-        # Draw text shadow for depth
-        shadow_offset = 3
-        draw.text((x+shadow_offset, y+shadow_offset), line, fill=(100, 100, 100), font=title_font)
-        draw.text((x, y), line, fill='black', font=title_font)
-        
-        y += title_font.size + 20
-
-    # Draw authors
-    y += 200  # More space between title and authors
-    for line in author_lines:
-        bbox = draw.textbbox((0, 0), line, font=author_font)
-        text_width = bbox[2] - bbox[0]
-        x = (width - text_width) // 2
-        draw.text((x, y), line, fill=(80, 80, 80), font=author_font)  # Darker gray for better contrast
-        y += author_font.size + 20
-
-    # Save the image with high quality
-    cover_path = output_path / 'images' / 'cover.png'
-    img.save(cover_path, "PNG", quality=95, dpi=(300, 300))
-    return 'cover.png'
-
-def get_metadata_with_user_input(metadata_file: Path) -> dict:
-    """
-    Read metadata from file and prompt for missing information.
-    """
-    metadata = {}
-    if metadata_file.exists():
-        try:
-            with open(metadata_file, 'r') as f:
-                metadata = json.load(f)
-        except Exception as e:
-            print(f"Warning: Could not read metadata file: {e}")
-    
-    # Get title and authors
-    title = metadata.get('metadata', {}).get('dc:title', '')
-    authors = metadata.get('metadata', {}).get('dc:creator', '')
-    
-    # If authors is missing or unknown, prompt user
-    if not authors or authors == "Unknown Author" or authors == "PDF2EPUB Converter":
-        print("\nNo author information found in metadata.")
-        authors = input("Please enter the author(s) of the document: ").strip()
-        
-        # Update metadata with user input
-        if 'metadata' not in metadata:
-            metadata['metadata'] = {}
-        metadata['metadata']['dc:creator'] = authors
-        
-        # Save updated metadata
-        try:
-            with open(metadata_file, 'w') as f:
-                json.dump(metadata, f, indent=2)
-        except Exception as e:
-            print(f"Warning: Could not save updated metadata: {e}")
-    
-    return metadata
 
 def convert_to_epub(markdown_dir: Path, output_path: Path) -> None:
     """
