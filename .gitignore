@@ -173,3 +173,6 @@ figures/
 
 # Config with sensitive data
 config.yaml
+
+# macOS
+.DS_Store
