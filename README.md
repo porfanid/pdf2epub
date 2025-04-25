@@ -16,6 +16,7 @@ A powerful Python package for converting PDF files to EPUB format via Markdown w
 - 📱 **Professional EPUB** - High-quality EPUB 3.0 output with customizable styling
 - 🌍 **Multi-language Support** - Process documents in multiple languages
 - 🚀 **GPU Acceleration** - NVIDIA CUDA and AMD ROCm support for faster processing
+- 🍎 **Apple Silicon Support** - Optimized performance on Apple Silicon devices
 - 🛠️ **Flexible API** - Use as CLI tool or import as Python library
 - 🔌 **Plugin Architecture** - Extensible AI provider system
 
@@ -43,6 +44,13 @@ pdf2epub book.pdf --start-page 10 --max-pages 50 --langs "English,German"
 
 ### Python API
 
+- For Apple Silicon, install with MPS support:
+```bash
+pip3 uninstall torch torchvision torchaudio
+pip3 install --pre torch torchvision torchaudio --extra-index-url https://download.pytorch.org/whl/nightly/cpu
+```
+
+3. Verify GPU support:
 ```python
 import pdf2epub
 
