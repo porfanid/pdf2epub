@@ -50,8 +50,20 @@ pip3 uninstall torch torchvision torchaudio
 pip3 install --pre torch torchvision torchaudio --extra-index-url https://download.pytorch.org/whl/nightly/cpu
 ```
 
+- For Apple Silicon, install with MPS support:
+```bash
+pip3 uninstall torch torchvision torchaudio
+pip3 install --pre torch torchvision torchaudio --extra-index-url https://download.pytorch.org/whl/nightly/cpu
+```
+
 3. Verify GPU support:
 ```python
+import torch
+print(torch.__version__)  # PyTorch version
+print(torch.cuda.is_available())  # Should return True for NVIDIA
+print(torch.mps.is_available())  # Should return True for Apple Silicon
+print(torch.version.hip)  # Should print ROCm version for AMD
+
 import pdf2epub
 
 # Simple conversion
