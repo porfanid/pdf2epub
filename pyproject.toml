@@ -7,18 +7,17 @@ name = "pdf2epub"
 version = "0.1.0"
 description = "Convert PDF files to EPUB format via Markdown with intelligent layout detection"
 readme = "README.md"
-license = {file = "LICENSE"}
+license = {text = "MIT"}
 authors = [
-    {name = "porfanid", email = "your.email@example.com"}
+    {name = "porfanid"}
 ]
 maintainers = [
-    {name = "porfanid", email = "your.email@example.com"}
+    {name = "porfanid"}
 ]
 classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",
     "Intended Audience :: End Users/Desktop",
-    "License :: OSI Approved :: MIT License",
     "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.9",
@@ -56,7 +55,9 @@ dev = [
 Homepage = "https://github.com/porfanid/pdf2epub"
 Repository = "https://github.com/porfanid/pdf2epub"
 Issues = "https://github.com/porfanid/pdf2epub/issues"
-Documentation = "https://github.com/porfanid/pdf2epub/blob/main/README.md"
+Documentation = "https://github.com/porfanid/pdf2epub/blob/main/docs/README.md"
+Changelog = "https://github.com/porfanid/pdf2epub/blob/main/CHANGELOG.md"
+Discussions = "https://github.com/porfanid/pdf2epub/discussions"
 
 [project.scripts]
 pdf2epub = "pdf2epub.cli:main"
