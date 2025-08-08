@@ -1,0 +1,93 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pdf2epub"
+version = "0.1.0"
+description = "Convert PDF files to EPUB format via Markdown with intelligent layout detection"
+readme = "README.md"
+license = {text = "MIT"}
+authors = [
+    {name = "porfanid"}
+]
+maintainers = [
+    {name = "porfanid"}
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Intended Audience :: End Users/Desktop",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Multimedia :: Graphics :: Graphics Conversion",
+    "Topic :: Text Processing :: Markup",
+    "Topic :: Utilities",
+]
+keywords = ["pdf", "epub", "markdown", "conversion", "ebook", "ai", "postprocessing"]
+requires-python = ">=3.9"
+dependencies = [
+    "markdown>=3.7",
+]
+
+[project.optional-dependencies]
+full = [
+    "marker-pdf==0.3.10",
+    "transformers==4.45.2", 
+    "anthropic==0.39.0",
+    "torch",
+    "pillow",
+    "regex",
+]
+dev = [
+    "pytest>=7.0",
+    "pytest-cov>=4.0",
+    "black>=23.0",
+    "flake8>=6.0",
+    "mypy>=1.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/porfanid/pdf2epub"
+Repository = "https://github.com/porfanid/pdf2epub"
+Issues = "https://github.com/porfanid/pdf2epub/issues"
+Documentation = "https://github.com/porfanid/pdf2epub/blob/main/docs/README.md"
+Changelog = "https://github.com/porfanid/pdf2epub/blob/main/CHANGELOG.md"
+Discussions = "https://github.com/porfanid/pdf2epub/discussions"
+
+[project.scripts]
+pdf2epub = "pdf2epub.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["pdf2epub*"]
+
+[tool.setuptools.package-data]
+"pdf2epub.postprocessing" = ["*.txt"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = [
+    "--strict-markers",
+    "--strict-config",
+    "--cov=pdf2epub",
+    "--cov-report=term-missing",
+    "--cov-report=html",
+]
+
+[tool.black]
+line-length = 88
+target-version = ['py39']
+
+[tool.mypy]
+python_version = "3.9"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true

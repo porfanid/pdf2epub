@@ -1,0 +1,42 @@
+include README.md
+include LICENSE
+include CHANGELOG.md
+include CONTRIBUTING.md
+include AUTHORS.md
+include SECURITY.md
+include requirements.txt
+include pyproject.toml
+
+# Include all package files
+recursive-include pdf2epub *.py
+recursive-include pdf2epub *.txt
+recursive-include pdf2epub *.md
+
+# Include test files for development installations
+recursive-include tests *.py
+
+# Include documentation
+recursive-include docs *.md
+recursive-include docs *.txt
+recursive-include docs *.rst
+
+# Exclude development and build artifacts
+exclude .gitignore
+exclude .github/*
+exclude .pytest_cache
+exclude *.pyc
+exclude __pycache__
+exclude .mypy_cache
+exclude .coverage
+exclude htmlcov/
+exclude dist/
+exclude build/
+exclude *.egg-info/
+
+# Exclude temporary and test files
+exclude test_*.py
+exclude **/test_*.py
+exclude filetree.sh
+
+# Exclude main.py (legacy script, not part of package)
+exclude main.py

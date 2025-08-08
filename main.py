@@ -2,16 +2,16 @@
 import argparse
 from pathlib import Path
 import logging
-import modules.pdf2md as pdf2md
-import modules.mark2epub as mark2epub
-from modules.postprocessing.ai import AIPostprocessor
+import pdf2epub.pdf2md as pdf2md
+import pdf2epub.mark2epub as mark2epub
+from pdf2epub.postprocessing.ai import AIPostprocessor
 import torch
+
 
 def main():
     # Configure logging
     logging.basicConfig(
-        level=logging.INFO,
-        format='%(asctime)s - %(levelname)s - %(message)s'
+        level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
     )
     logger = logging.getLogger(__name__)
 
@@ -20,83 +20,77 @@ def main():
         logger.info("CUDA is available. Using GPU for processing.")
     else:
         logger.info("CUDA is not available. Using CPU for processing.")
-        
+
     # Set up argument parser
     parser = argparse.ArgumentParser(
-        description='Convert PDF files to EPUB format via Markdown with AI postprocessing'
+        description="Convert PDF files to EPUB format via Markdown with AI postprocessing"
     )
     parser.add_argument(
-        'input_path',
-        nargs='?',
+        "input_path",
+        nargs="?",
         type=str,
-        help='Path to input PDF file or directory (default: ./input/*.pdf)'
+        help="Path to input PDF file or directory (default: ./input/*.pdf)",
     )
     parser.add_argument(
-        'output_path',
-        nargs='?',
+        "output_path",
+        nargs="?",
         type=str,
-        help='Path to output directory (default: directory named after PDF)'
+        help="Path to output directory (default: directory named after PDF)",
     )
     parser.add_argument(
-        '--batch-multiplier',
+        "--batch-multiplier",
         type=int,
         default=2,
-        help='Multiplier for batch size (higher uses more memory but processes faster)'
+        help="Multiplier for batch size (higher uses more memory but processes faster)",
     )
     parser.add_argument(
-        '--max-pages',
-        type=int,
-        default=None,
-        help='Maximum number of pages to process'
+        "--max-pages", type=int, default=None, help="Maximum number of pages to process"
     )
     parser.add_argument(
-        '--start-page',
-        type=int,
-        default=None,
-        help='Page number to start from'
+        "--start-page", type=int, default=None, help="Page number to start from"
     )
     parser.add_argument(
-        '--langs',
+        "--langs",
         type=str,
         default=None,
-        help='Comma-separated list of languages in the document'
+        help="Comma-separated list of languages in the document",
     )
     parser.add_argument(
-        '--skip-epub',
-        action='store_true',
-        help='Skip EPUB generation, only create markdown'
+        "--skip-epub",
+        action="store_true",
+        help="Skip EPUB generation, only create markdown",
     )
     parser.add_argument(
-        '--skip-md',
-        action='store_true',
-        help='Skip markdown generation, use existing markdown files'
+        "--skip-md",
+        action="store_true",
+        help="Skip markdown generation, use existing markdown files",
     )
     parser.add_argument(
-        '--skip-ai',
-        action='store_true',
-        help='Skip AI postprocessing step'
+        "--skip-ai", action="store_true", help="Skip AI postprocessing step"
     )
     parser.add_argument(
-        '--ai-provider',
+        "--ai-provider",
         type=str,
-        default='anthropic',
-        choices=['anthropic'],
-        help='AI provider to use for postprocessing'
+        default="anthropic",
+        choices=["anthropic"],
+        help="AI provider to use for postprocessing",
     )
-    
+
     args = parser.parse_args()
-    
+
     # Get input path
-    input_path = Path(args.input_path) if args.input_path else pdf2md.get_default_input_dir()
-    
+    input_path = (
+        Path(args.input_path) if args.input_path else pdf2md.get_default_input_dir()
+    )
+
     # Get queue of PDFs to process
     queue = pdf2md.add_pdfs_to_queue(input_path)
     logger.info(f"Found {len(queue)} PDF files to process")
-    
+
     # Process each PDF
     for pdf_path in queue:
         logger.info(f"\nProcessing: {pdf_path.name}")
-        
+
         # Get output directory for this PDF
         if args.output_path:
             output_path = Path(args.output_path)
@@ -104,7 +98,7 @@ def main():
         else:
             markdown_dir = pdf2md.get_default_output_dir(pdf_path)
             output_path = markdown_dir.parent
-            
+
         try:
             # Check if markdown directory exists when skipping MD generation
             if args.skip_md:
@@ -112,7 +106,7 @@ def main():
                     logger.error(f"Error: Markdown directory not found: {markdown_dir}")
                     continue
                 logger.info(f"Using existing markdown files from: {markdown_dir}")
-                
+
             # Convert PDF to Markdown unless skipped
             if not args.skip_md:
                 logger.info("Converting PDF to Markdown...")
@@ -122,9 +116,9 @@ def main():
                     args.batch_multiplier,
                     args.max_pages,
                     args.start_page,
-                    args.langs
+                    args.langs,
                 )
-            
+
             # Handle AI postprocessing if not skipped
             if not args.skip_ai:
                 try:
@@ -132,29 +126,31 @@ def main():
                     if markdown_file.exists():
                         logger.info("\nInitiating AI postprocessing analysis...")
                         processor = AIPostprocessor(markdown_dir)
-                        
+
                         # Run AI postprocessing
                         processor.run_postprocessing(
-                            markdown_path=markdown_file,
-                            ai_provider=args.ai_provider
+                            markdown_path=markdown_file, ai_provider=args.ai_provider
                         )
-                        
+
                         logger.info("AI postprocessing completed successfully")
                     else:
-                        logger.warning(f"Warning: Markdown file not found for AI processing: {markdown_file}")
+                        logger.warning(
+                            f"Warning: Markdown file not found for AI processing: {markdown_file}"
+                        )
                 except Exception as e:
                     logger.error(f"Error during AI postprocessing: {e}")
                     logger.info("Proceeding with original markdown")
-            
+
             # Convert Markdown to EPUB unless skipped
             if not args.skip_epub:
                 logger.info("Converting Markdown to EPUB...")
                 mark2epub.convert_to_epub(markdown_dir, output_path)
                 logger.info("EPUB conversion completed")
-                
+
         except Exception as e:
             logger.error(f"Error processing {pdf_path.name}: {str(e)}")
             continue
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     main()
