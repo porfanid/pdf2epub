@@ -9,7 +9,13 @@ import sys
 
 from . import pdf2md, mark2epub
 from .postprocessing.ai import AIPostprocessor
-import torch
+
+try:
+    import torch
+    TORCH_AVAILABLE = True
+except ImportError:
+    TORCH_AVAILABLE = False
+    torch = None
 
 
 def main():
@@ -22,10 +28,12 @@ def main():
     logger = logging.getLogger(__name__)
 
     # Check CUDA availability
-    if torch.cuda.is_available():
+    if TORCH_AVAILABLE and torch.cuda.is_available():
         logger.info("CUDA is available. Using GPU for processing.")
-    else:
+    elif TORCH_AVAILABLE:
         logger.info("CUDA is not available. Using CPU for processing.")
+    else:
+        logger.info("PyTorch not available. GPU acceleration disabled.")
         
     # Set up argument parser
     parser = argparse.ArgumentParser(
