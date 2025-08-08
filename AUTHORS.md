@@ -1,23 +1,30 @@
 # Authors
 
 ## Project Creator
-- **porfanid** - *Initial work, package transformation, and maintainer*
+- **overcuriousity** - *Initial work and original PDF2EPUB implementation*
 
 ## Contributors
 
 We welcome contributions from the community! This project has been enhanced by the following contributors:
 
+### Maintainer
+- **porfanid** - *Repository maintainer and publisher*
+
+### Package Transformation
+- **copilot-swe-agent[bot]** - Package architecture, CLI interface, test suite, comprehensive documentation
+
 ### Core Development
-- **porfanid** - Package architecture, CLI interface, test suite, documentation
+- **overcuriousity** - Original PDF conversion logic, markdown processing, AI postprocessing foundation
 
 ### AI Integration
-- **porfanid** - AI postprocessing system, Anthropic Claude integration
+- **overcuriousity** - AI postprocessing system, Anthropic Claude integration
+- **copilot-swe-agent[bot]** - Enhanced AI provider plugin architecture
 
 ### Documentation
-- **porfanid** - Comprehensive code documentation, API references, user guides
+- **copilot-swe-agent[bot]** - Comprehensive code documentation, API references, user guides, publishing preparation
 
 ### Testing & Quality Assurance
-- **porfanid** - Test suite development, CI/CD pipeline, code quality tools
+- **copilot-swe-agent[bot]** - Test suite development, CI/CD pipeline, code quality tools
 
 ## Special Thanks
 
