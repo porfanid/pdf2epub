@@ -1,0 +1,21 @@
+{
+  "metadata": {
+    "dc:title": "Final Test",
+    "dc:creator": "Validation Author",
+    "dc:identifier": "id-20250808150859",
+    "dc:language": "en",
+    "dc:rights": "All rights reserved",
+    "dc:publisher": "PDF2EPUB",
+    "dc:date": "2025-08-08"
+  },
+  "default_css": [
+    "style.css"
+  ],
+  "chapters": [
+    {
+      "markdown": "test.md",
+      "css": ""
+    }
+  ],
+  "cover_image": null
+}
