@@ -75,7 +75,12 @@ dependencies will disable related features but won't break core functionality.
 """
 
 # Import core conversion functions from modules
-from .pdf2md import convert_pdf, add_pdfs_to_queue, get_default_output_dir, get_default_input_dir
+from .pdf2md import (
+    convert_pdf,
+    add_pdfs_to_queue,
+    get_default_output_dir,
+    get_default_input_dir,
+)
 from .mark2epub import convert_to_epub
 from .postprocessing.ai import AIPostprocessor
 
@@ -86,27 +91,25 @@ __author__ = "porfanid"
 # Comprehensive public API with clear categorization
 __all__ = [
     # PDF to Markdown conversion functions
-    "convert_pdf",              # Core PDF conversion with full parameter control
-    "add_pdfs_to_queue",       # Batch processing queue management
+    "convert_pdf",  # Core PDF conversion with full parameter control
+    "add_pdfs_to_queue",  # Batch processing queue management
     "get_default_output_dir",  # Output directory path generation
-    "get_default_input_dir",   # Input directory path generation
-    
+    "get_default_input_dir",  # Input directory path generation
     # Markdown to EPUB conversion functions
-    "convert_to_epub",         # Core EPUB generation functionality
-    
+    "convert_to_epub",  # Core EPUB generation functionality
     # AI Postprocessing classes
-    "AIPostprocessor",         # AI-powered content improvement
+    "AIPostprocessor",  # AI-powered content improvement
 ]
 
 
 def convert_pdf_to_markdown(pdf_path: str, output_dir: str, **kwargs) -> None:
     """
     Convert a PDF file to Markdown format with intelligent layout detection.
-    
+
     This convenience function provides a simplified interface to the core PDF
     conversion functionality. It handles path conversion and provides sensible
     defaults for most use cases.
-    
+
     Args:
         pdf_path: Path to the input PDF file (relative or absolute)
         output_dir: Directory to save the markdown output and images
@@ -115,33 +118,35 @@ def convert_pdf_to_markdown(pdf_path: str, output_dir: str, **kwargs) -> None:
             - max_pages (int): Maximum pages to process (default: None = all)
             - start_page (int): Starting page number (default: None = beginning)
             - langs (str): Comma-separated language list for OCR (default: None)
-    
+
     Example:
         >>> convert_pdf_to_markdown("document.pdf", "output/")
         >>> convert_pdf_to_markdown("book.pdf", "output/", max_pages=50, langs="English,German")
     """
     from pathlib import Path
+
     convert_pdf(pdf_path, Path(output_dir), **kwargs)
 
 
 def convert_markdown_to_epub(markdown_dir: str, output_path: str) -> None:
     """
     Convert Markdown files to EPUB format with professional styling.
-    
+
     This convenience function provides a simplified interface to EPUB generation.
     It automatically handles metadata collection, image processing, and EPUB
     packaging according to EPUB 3.0 specifications.
-    
+
     Args:
         markdown_dir: Directory containing markdown files and images
         output_path: Output directory where the EPUB file will be created
-    
+
     Note:
         The function will interactively prompt for metadata (title, author, etc.)
         and optionally allow review of markdown content before conversion.
-    
+
     Example:
         >>> convert_markdown_to_epub("markdown_output/", "final_books/")
     """
     from pathlib import Path
+
     convert_to_epub(Path(markdown_dir), Path(output_path))
