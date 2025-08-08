@@ -189,7 +189,9 @@ class TestMark2EPUB:
     @patch("pdf2epub.mark2epub.get_metadata_from_user")
     @patch("pdf2epub.mark2epub.zipfile.ZipFile")
     @patch("builtins.input", return_value="n")  # Mock user input for review_markdown
-    def test_convert_to_epub_basic_flow(self, mock_input, mock_zipfile, mock_get_metadata):
+    def test_convert_to_epub_basic_flow(
+        self, mock_input, mock_zipfile, mock_get_metadata
+    ):
         """Test basic convert_to_epub flow."""
         # Mock metadata input
         mock_get_metadata.return_value = {
@@ -215,7 +217,7 @@ class TestMark2EPUB:
             temp_path = Path(temp_dir)
             markdown_dir = temp_path / "markdown"
             markdown_dir.mkdir()
-            
+
             # Create images directory (expected by convert_to_epub)
             images_dir = markdown_dir / "images"
             images_dir.mkdir()

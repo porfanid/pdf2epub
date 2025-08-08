@@ -96,7 +96,7 @@ class TestPDF2MD:
         """Test save_images with empty images dictionary."""
         with tempfile.TemporaryDirectory() as temp_dir:
             image_dir = Path(temp_dir) / "images"
-            
+
             # Mock PIL to be available so we can test the empty dict logic
             with patch("pdf2epub.pdf2md.PIL_AVAILABLE", True):
                 pdf2md.save_images({}, image_dir)
@@ -108,7 +108,7 @@ class TestPDF2MD:
         """Test save_images with None input."""
         with tempfile.TemporaryDirectory() as temp_dir:
             image_dir = Path(temp_dir) / "images"
-            
+
             # Mock PIL to be available so we can test the None input logic
             with patch("pdf2epub.pdf2md.PIL_AVAILABLE", True):
                 pdf2md.save_images(None, image_dir)
@@ -141,7 +141,7 @@ class TestPDF2MD:
             input_pdf = temp_path / "test.pdf"
             input_pdf.write_text("dummy pdf")
             output_dir = temp_path / "output"
-            
+
             # Setup mock to simulate successful conversion
             def mock_conversion(input_path, output_dir_param, **kwargs):
                 output_dir_param.mkdir(exist_ok=True)
@@ -149,17 +149,16 @@ class TestPDF2MD:
                 md_file.write_text("# Test Document\nContent here")
                 meta_file = output_dir_param / "test_metadata.json"
                 meta_file.write_text('{"title": "Test Document"}')
-            
+
             mock_convert_pdf.side_effect = mock_conversion
 
             # Call the function through the module import since we're mocking it
             import pdf2epub.pdf2md as pdf2md
+
             pdf2md.convert_pdf(str(input_pdf), output_dir)
 
             # Verify the mock was called
-            mock_convert_pdf.assert_called_once_with(
-                str(input_pdf), output_dir
-            )
+            mock_convert_pdf.assert_called_once_with(str(input_pdf), output_dir)
 
     def test_convert_pdf_with_languages(self):
         """Test convert_pdf with language specification."""
@@ -181,9 +180,8 @@ class TestPDF2MD:
                 mock_convert_pdf.side_effect = mock_conversion
 
                 import pdf2epub.pdf2md as pdf2md
-                pdf2md.convert_pdf(
-                    str(input_pdf), output_dir, langs="English,German"
-                )
+
+                pdf2md.convert_pdf(str(input_pdf), output_dir, langs="English,German")
 
                 # Verify the mock was called with languages
                 mock_convert_pdf.assert_called_once_with(
