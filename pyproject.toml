@@ -32,6 +32,9 @@ keywords = ["pdf", "epub", "markdown", "conversion", "ebook", "ai", "postprocess
 requires-python = ">=3.9"
 dependencies = [
     "markdown>=3.7",
+    "marker-pdf==0.3.10",
+    "transformers==4.45.2",
+    "anthropic==0.39.0"
 ]
 
 [project.optional-dependencies]
