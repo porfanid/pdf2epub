@@ -2,8 +2,14 @@ import argparse
 from pathlib import Path
 import sys
 import json
-import marker 
-from PIL import Image
+
+try:
+    from PIL import Image
+    PIL_AVAILABLE = True
+except ImportError:
+    PIL_AVAILABLE = False
+    Image = None
+
 import io
 
 def get_default_output_dir(input_path: Path) -> Path:
@@ -32,6 +38,10 @@ def save_images(images: dict, image_dir: Path) -> None:
         images: Dictionary of images from marker-pdf conversion where keys are filenames
         image_dir: Directory to save images to
     """
+    if not PIL_AVAILABLE:
+        print("PIL/Pillow not available, skipping image processing")
+        return
+        
     if not images:
         print("No images found in document")
         return
@@ -88,9 +98,12 @@ def convert_pdf(
     Convert a single PDF file to markdown format with enhanced image handling.
     """
     try:
-        # Load models
-        from marker.models import load_all_models
-        from marker.convert import convert_single_pdf
+        # Load models (import here to delay dependency requirement)
+        try:
+            from marker.models import load_all_models
+            from marker.convert import convert_single_pdf
+        except ImportError:
+            raise ImportError("marker-pdf not available. Install with: pip install marker-pdf==0.3.10")
         
         model_lst = load_all_models()
         

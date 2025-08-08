@@ -1,11 +1,29 @@
-import markdown
+try:
+    import markdown
+    MARKDOWN_AVAILABLE = True
+except ImportError:
+    MARKDOWN_AVAILABLE = False
+    markdown = None
+
 import os
 from xml.dom import minidom
 import zipfile
 import sys
 import json
-from PIL import Image
-import regex as re
+try:
+    from PIL import Image
+    PIL_AVAILABLE = True
+except ImportError:
+    PIL_AVAILABLE = False
+    Image = None
+
+try:
+    import regex as re
+    REGEX_AVAILABLE = True
+except ImportError:
+    REGEX_AVAILABLE = False
+    import re
+
 from pathlib import Path
 from datetime import datetime
 import subprocess
@@ -100,6 +118,12 @@ def process_markdown_for_images(markdown_text: str, work_dir: Path) -> tuple[str
 
 def copy_and_optimize_image(src_path: Path, dest_path: Path, max_dimension: int = 1800) -> None:
     """Copy image to destination path with optimization for EPUB."""
+    if not PIL_AVAILABLE:
+        # Fallback: just copy the file without optimization
+        import shutil
+        shutil.copy2(src_path, dest_path)
+        return
+        
     try:
         with Image.open(src_path) as img:
             if img.mode == 'RGBA':

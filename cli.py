@@ -1,13 +1,19 @@
 #!/usr/bin/env python3
+"""
+Command-line interface for pdf2epub package.
+"""
 import argparse
 from pathlib import Path
 import logging
-import pdf2epub.pdf2md as pdf2md
-import pdf2epub.mark2epub as mark2epub
-from pdf2epub.postprocessing.ai import AIPostprocessor
+import sys
+
+from . import pdf2md, mark2epub
+from .postprocessing.ai import AIPostprocessor
 import torch
 
+
 def main():
+    """Main CLI entry point."""
     # Configure logging
     logging.basicConfig(
         level=logging.INFO,
@@ -155,6 +161,7 @@ def main():
         except Exception as e:
             logger.error(f"Error processing {pdf_path.name}: {str(e)}")
             continue
+
 
 if __name__ == '__main__':
     main()

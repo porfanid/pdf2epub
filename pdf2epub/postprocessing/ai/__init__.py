@@ -3,7 +3,7 @@ import json
 from typing import Optional, Tuple, Dict
 import logging
 from . import anthropicapi
-from .. import process_markdown
+from ..postprocessor import process_markdown
 
 AI_PROVIDER = "anthropic"
 

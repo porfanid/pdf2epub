@@ -1,4 +1,10 @@
-import anthropic
+try:
+    import anthropic
+    ANTHROPIC_AVAILABLE = True
+except ImportError:
+    ANTHROPIC_AVAILABLE = False
+    anthropic = None
+
 import os
 from typing import Optional, Tuple
 import json
@@ -10,6 +16,9 @@ class Anthropic_Analysis:
         """
         Analyze markdown with Claude and return a json object.
         """
+        if not ANTHROPIC_AVAILABLE:
+            raise ImportError("anthropic package not available. Install with: pip install anthropic==0.39.0")
+            
         # Set up logging
         logger = logging.getLogger(__name__)
         
