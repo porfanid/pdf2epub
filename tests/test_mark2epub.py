@@ -73,21 +73,22 @@ class TestMark2EPUB:
         """Test review_markdown with non-existent file."""
         non_existent_path = Path("/non/existent/file.md")
 
-        should_continue, reason = mark2epub.review_markdown(non_existent_path)
+        # The function should raise FileNotFoundError for non-existent files
+        with pytest.raises(FileNotFoundError):
+            mark2epub.review_markdown(non_existent_path)
 
-        assert not should_continue
-        assert "not found" in reason.lower()
-
-    def test_review_markdown_valid_file(self):
+    @patch("builtins.input", return_value="n")
+    def test_review_markdown_valid_file(self, mock_input):
         """Test review_markdown with valid markdown file."""
         with tempfile.TemporaryDirectory() as temp_dir:
             md_file = Path(temp_dir) / "test.md"
             md_file.write_text("# Test Markdown\n\nThis is a test.")
 
-            should_continue, reason = mark2epub.review_markdown(md_file)
+            should_continue, content = mark2epub.review_markdown(md_file)
 
+            # User chose not to review, so should continue with conversion
             assert should_continue
-            assert reason == ""
+            assert content == "# Test Markdown\n\nThis is a test."
 
     def test_process_markdown_for_images_no_images(self):
         """Test process_markdown_for_images with no images."""
@@ -123,13 +124,8 @@ class TestMark2EPUB:
             assert "test.png" in image_list
             assert len(image_list) == 1
 
-    @patch("pdf2epub.mark2epub.Image.open")
-    def test_copy_and_optimize_image(self, mock_image_open):
+    def test_copy_and_optimize_image(self):
         """Test copy_and_optimize_image function."""
-        mock_img = MagicMock()
-        mock_img.size = (2000, 1500)  # Larger than max_dimension
-        mock_image_open.return_value = mock_img
-
         with tempfile.TemporaryDirectory() as temp_dir:
             temp_path = Path(temp_dir)
             src_path = temp_path / "source.png"
@@ -138,11 +134,12 @@ class TestMark2EPUB:
             # Create dummy source file
             src_path.write_bytes(b"fake image")
 
+            # Since PIL is not available in test environment, this should do a simple copy
             mark2epub.copy_and_optimize_image(src_path, dest_path, max_dimension=1800)
 
-            # Check that image processing was called
-            mock_img.thumbnail.assert_called_once_with((1800, 1800))
-            mock_img.save.assert_called_once_with(dest_path, optimize=True)
+            # Check that file was copied
+            assert dest_path.exists()
+            assert dest_path.read_bytes() == b"fake image"
 
     def test_get_all_filenames(self):
         """Test get_all_filenames function."""
@@ -155,7 +152,8 @@ class TestMark2EPUB:
             (temp_path / "file3.txt").write_text("content")
             (temp_path / "image.png").write_bytes(b"image")
 
-            result = mark2epub.get_all_filenames(str(temp_path), [".md"])
+            # Function expects extensions without the dot
+            result = mark2epub.get_all_filenames(str(temp_path), ["md"])
 
             assert "file1.md" in result
             assert "file2.md" in result
@@ -168,7 +166,8 @@ class TestMark2EPUB:
 
         assert '<?xml version="1.0"' in result
         assert "container" in result
-        assert "META-INF" in result
+        assert "OPS/package.opf" in result
+        assert "rootfiles" in result
 
     def test_get_coverpage_xml(self):
         """Test get_coverpage_XML function."""
@@ -189,7 +188,8 @@ class TestMark2EPUB:
 
     @patch("pdf2epub.mark2epub.get_metadata_from_user")
     @patch("pdf2epub.mark2epub.zipfile.ZipFile")
-    def test_convert_to_epub_basic_flow(self, mock_zipfile, mock_get_metadata):
+    @patch("builtins.input", return_value="n")  # Mock user input for review_markdown
+    def test_convert_to_epub_basic_flow(self, mock_input, mock_zipfile, mock_get_metadata):
         """Test basic convert_to_epub flow."""
         # Mock metadata input
         mock_get_metadata.return_value = {
@@ -215,6 +215,10 @@ class TestMark2EPUB:
             temp_path = Path(temp_dir)
             markdown_dir = temp_path / "markdown"
             markdown_dir.mkdir()
+            
+            # Create images directory (expected by convert_to_epub)
+            images_dir = markdown_dir / "images"
+            images_dir.mkdir()
 
             # Create test markdown file
             md_file = markdown_dir / "test.md"

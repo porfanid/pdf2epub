@@ -52,8 +52,10 @@ class TestAIPostprocessor:
             work_dir = Path(temp_dir)
             processor = AIPostprocessor(work_dir)
 
-            with pytest.raises(RuntimeError, match="Failed to read prompt.txt"):
-                processor._get_system_prompt()
+            # Mock the prompt_path to point to non-existent file
+            with patch("pathlib.Path.exists", return_value=False):
+                with pytest.raises(RuntimeError, match="Failed to read prompt.txt"):
+                    processor._get_system_prompt()
 
     def test_get_markdown_sample_success(self):
         """Test _get_markdown_sample with valid markdown file."""
