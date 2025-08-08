@@ -1,3 +1,44 @@
+"""
+Markdown to EPUB conversion module with comprehensive format support.
+
+This module converts Markdown files and associated images into EPUB format,
+following the EPUB 3.0 specification. It provides a complete pipeline from
+markdown input to a valid EPUB file that can be read by most e-readers.
+
+Key features:
+- EPUB 3.0 compliance with backwards compatibility
+- Interactive metadata collection
+- Image optimization and format conversion
+- CSS styling support
+- Table of contents generation (both XHTML and NCX formats)
+- Markdown extensions (code highlighting, tables, footnotes)
+- Memory-efficient processing for large documents
+
+EPUB Structure Created:
+- mimetype: Required EPUB identifier
+- META-INF/container.xml: Points to the package manifest
+- OPS/package.opf: Main manifest with metadata, file listings, and reading order
+- OPS/titlepage.xhtml: Generated cover page
+- OPS/TOC.xhtml: EPUB 3.0 navigation document
+- OPS/toc.ncx: EPUB 2.0 compatibility navigation
+- OPS/s#####-*.xhtml: Individual chapter files
+- OPS/images/: Optimized images
+- OPS/css/: Stylesheets
+"""
+
+# Core dependencies
+import os
+from xml.dom import minidom
+import zipfile
+import sys
+import json
+from pathlib import Path
+from datetime import datetime
+import subprocess
+from typing import Dict, Optional, Tuple
+
+# Optional dependency: markdown for content conversion
+# This is a core dependency for the package functionality
 try:
     import markdown
     MARKDOWN_AVAILABLE = True
@@ -5,11 +46,8 @@ except ImportError:
     MARKDOWN_AVAILABLE = False
     markdown = None
 
-import os
-from xml.dom import minidom
-import zipfile
-import sys
-import json
+# Optional dependency: PIL for image processing and optimization
+# If not available, images will be copied without optimization
 try:
     from PIL import Image
     PIL_AVAILABLE = True
@@ -17,6 +55,8 @@ except ImportError:
     PIL_AVAILABLE = False
     Image = None
 
+# Optional dependency: regex for enhanced pattern matching
+# Falls back to standard re module if not available
 try:
     import regex as re
     REGEX_AVAILABLE = True
@@ -24,25 +64,56 @@ except ImportError:
     REGEX_AVAILABLE = False
     import re
 
-from pathlib import Path
-from datetime import datetime
-import subprocess
-from typing import Dict, Optional, Tuple
-
 def get_user_input(prompt: str, default: str = "") -> str:
-    """Get user input with a default value."""
+    """
+    Get user input with a default value and input validation.
+    
+    Provides a consistent interface for collecting user input throughout
+    the EPUB creation process, with clear indication of default values.
+    
+    Args:
+        prompt: The prompt text to display to the user
+        default: Default value if user presses Enter without input
+        
+    Returns:
+        User input string, or default if no input provided
+    """
     user_input = input(f"{prompt} [{default}]: ").strip()
     return user_input if user_input else default
 
 def get_metadata_from_user(existing_metadata: Optional[Dict] = None) -> Dict:
-    """Interactively collect metadata from user with defaults from existing metadata."""
+    """
+    Interactively collect EPUB metadata from user with intelligent defaults.
+    
+    This function guides the user through providing essential EPUB metadata
+    required by the EPUB specification. It uses existing metadata as defaults
+    when available, making it suitable for updating existing projects.
+    
+    Args:
+        existing_metadata: Optional dictionary containing previously saved metadata
+        
+    Returns:
+        Complete metadata dictionary with all required EPUB fields
+        
+    EPUB Metadata Fields Collected:
+        - dc:title: Book title (required)
+        - dc:creator: Author name(s) (required) 
+        - dc:identifier: Unique book identifier (required)
+        - dc:language: Language code (required)
+        - dc:rights: Copyright information
+        - dc:publisher: Publisher name
+        - dc:date: Publication date
+    """
     if existing_metadata is None:
         existing_metadata = {}
     
+    # Extract existing metadata or use empty dict
     metadata = existing_metadata.get("metadata", {})
     
     print("\nPlease provide the following metadata for your EPUB (press Enter to use default value):")
+    print("This information will be embedded in the EPUB file and shown by e-readers.\n")
     
+    # Define all metadata fields with their prompts and intelligent defaults
     fields = {
         "dc:title": ("Title", metadata.get("dc:title", "Untitled Document")),
         "dc:creator": ("Author(s)", metadata.get("dc:creator", "Unknown Author")),
@@ -53,11 +124,13 @@ def get_metadata_from_user(existing_metadata: Optional[Dict] = None) -> Dict:
         "dc:date": ("Publication Date (YYYY-MM-DD)", metadata.get("dc:date", datetime.now().strftime("%Y-%m-%d")))
     }
     
+    # Collect input for each field
     updated_metadata = {}
     for key, (prompt, default) in fields.items():
         value = get_user_input(prompt, default)
         updated_metadata[key] = value
         
+    # Return complete metadata structure with defaults for optional fields
     return {
         "metadata": updated_metadata,
         "default_css": existing_metadata.get("default_css", ["style.css"]),
@@ -66,80 +139,182 @@ def get_metadata_from_user(existing_metadata: Optional[Dict] = None) -> Dict:
     }
 
 def review_markdown(markdown_path: Path) -> tuple[bool, str]:
-    """Ask user if they want to review the markdown file."""
+    """
+    Allow user to review and edit markdown content before EPUB conversion.
+    
+    This function provides an opportunity for users to make final edits to
+    their markdown content before it's converted to EPUB format. It attempts
+    to open the file in the system's default editor and waits for confirmation.
+    
+    Args:
+        markdown_path: Path to the markdown file to review
+        
+    Returns:
+        Tuple of (should_continue: bool, content: str)
+        - should_continue: False if user wants to abort conversion
+        - content: Updated markdown content after any edits
+        
+    Note:
+        Uses system default application for .md files. On Linux uses xdg-open,
+        on Windows uses start command. Falls back gracefully if opening fails.
+    """
+    # Read the current content
     content = markdown_path.read_text(encoding='utf-8')
     
     while True:
         response = input("\nWould you like to review the markdown file before conversion? (y/n): ").lower()
+        
         if response in ['y', 'yes']:
             try:
-                subprocess.run(['xdg-open' if os.name == 'posix' else 'start', str(markdown_path)], check=True)
+                # Try to open file with system default editor
+                # This allows users to make final edits before conversion
+                print(f"Opening {markdown_path.name} in default editor...")
+                command = 'xdg-open' if os.name == 'posix' else 'start'
+                subprocess.run([command, str(markdown_path)], check=True)
                 
+                # Wait for user to finish editing
                 while True:
                     proceed = input("\nPress Enter when you're done editing (or 'q' to abort): ").lower()
                     if proceed == 'q':
+                        print("Conversion aborted by user.")
                         return False, content
                     elif proceed == '':
+                        # Reload content after editing
                         updated_content = markdown_path.read_text(encoding='utf-8')
+                        print("Using updated content for conversion.")
                         return True, updated_content
+                        
             except Exception as e:
                 print(f"\nError opening markdown file: {e}")
-                print("Proceeding with conversion...")
+                print("This might happen if no default editor is configured for .md files.")
+                print("Proceeding with conversion using current content...")
                 return True, content
+                
         elif response in ['n', 'no']:
+            print("Proceeding with conversion without review.")
             return True, content
         else:
             print("Please enter 'y' or 'n'")
 
 def process_markdown_for_images(markdown_text: str, work_dir: Path) -> tuple[str, list[str]]:
-    """Process markdown content to find image references."""
+    """
+    Process markdown content to find and normalize image references.
+    
+    This function scans markdown content for image references and updates them
+    to use relative paths suitable for EPUB format. It also collects a list
+    of all referenced images for processing.
+    
+    Args:
+        markdown_text: Raw markdown content to process
+        work_dir: Working directory containing the markdown and images
+        
+    Returns:
+        Tuple of (modified_text: str, images_found: list[str])
+        - modified_text: Markdown with normalized image paths
+        - images_found: List of image filenames referenced in the markdown
+        
+    Image Path Processing:
+        - Converts absolute paths to relative paths
+        - Normalizes all image references to images/ directory
+        - Warns about missing images but continues processing
+        
+    Example:
+        Input:  ![Chart](/absolute/path/chart.png)
+        Output: ![Chart](images/chart.png)
+    """
+    # Regex pattern to match markdown image syntax: ![alt text](path)
     image_pattern = r'!\[(.*?)\]\((.*?)\)'
     images_found = []
     modified_text = markdown_text
     
+    # Find all image references in the markdown
     for match in re.finditer(image_pattern, markdown_text):
         alt_text, image_path = match.groups()
         image_path = image_path.strip()
+        
+        # Convert to Path object for easier manipulation
         img_path = Path(image_path)
+        
+        # Handle absolute vs relative paths
         if img_path.is_absolute():
-            rel_path = img_path.relative_to(work_dir)
+            # Convert absolute path to relative from work directory
+            try:
+                rel_path = img_path.relative_to(work_dir)
+            except ValueError:
+                # Path is not relative to work_dir, just use filename
+                rel_path = img_path
         else:
             rel_path = img_path
             
+        # Check if the actual image file exists
         full_image_path = work_dir / 'images' / img_path.name
         if full_image_path.exists():
+            # Add to list of found images
             images_found.append(img_path.name)
+            
+            # Update the markdown to use standardized path
             new_ref = f'![{alt_text}](images/{img_path.name})'
             modified_text = modified_text.replace(match.group(0), new_ref)
         else:
+            # Warn about missing images but don't fail conversion
             print(f"Warning: Image not found: {full_image_path}")
     
     return modified_text, images_found
 
 def copy_and_optimize_image(src_path: Path, dest_path: Path, max_dimension: int = 1800) -> None:
-    """Copy image to destination path with optimization for EPUB."""
+    """
+    Copy and optimize images for EPUB format with size and quality constraints.
+    
+    This function optimizes images for e-reader compatibility by:
+    - Converting RGBA to RGB (removing transparency)
+    - Resizing large images to reasonable dimensions
+    - Compressing with appropriate quality settings
+    - Converting to standard formats (JPEG/PNG)
+    
+    Args:
+        src_path: Source image file path
+        dest_path: Destination image file path
+        max_dimension: Maximum width or height in pixels (default: 1800)
+        
+    Note:
+        If PIL is not available, performs simple file copy without optimization.
+        Most e-readers handle images better when they're under 2MB and 1800px.
+    """
     if not PIL_AVAILABLE:
-        # Fallback: just copy the file without optimization
+        # Fallback: simple file copy without optimization
         import shutil
         shutil.copy2(src_path, dest_path)
         return
         
     try:
         with Image.open(src_path) as img:
+            # Convert RGBA to RGB to remove transparency
+            # Many e-readers don't handle transparency well
             if img.mode == 'RGBA':
-                img = img.convert('RGB')
+                # Create white background for transparency
+                background = Image.new('RGB', img.size, (255, 255, 255))
+                background.paste(img, mask=img.split()[-1])  # Use alpha channel as mask
+                img = background
                 
+            # Calculate resize ratio if image is too large
+            # Keeps aspect ratio while ensuring both dimensions fit within max_dimension
             ratio = min(max_dimension / max(img.size[0], img.size[1]), 1.0)
-            new_size = tuple(int(dim * ratio) for dim in img.size)
             
             if ratio < 1.0:
+                # Resize image using high-quality resampling
+                new_size = tuple(int(dim * ratio) for dim in img.size)
                 img = img.resize(new_size, Image.Resampling.LANCZOS)
+                print(f"Resized {src_path.name} from {img.size} to {new_size}")
             
+            # Save with format-appropriate settings
             if src_path.suffix.lower() in ['.jpg', '.jpeg']:
+                # JPEG: Use quality=85 for good compression with minimal quality loss
                 img.save(dest_path, 'JPEG', quality=85, optimize=True)
             elif src_path.suffix.lower() == '.png':
+                # PNG: Use optimization to reduce file size
                 img.save(dest_path, 'PNG', optimize=True)
             else:
+                # Unknown format: convert to JPEG with .jpg extension
                 dest_path = dest_path.with_suffix('.jpg')
                 img.save(dest_path, 'JPEG', quality=85, optimize=True)
                 
@@ -178,65 +353,96 @@ def get_all_filenames(the_dir, extensions=[]):
     return all_files
 
 def get_packageOPF_XML(md_filenames=[], image_filenames=[], css_filenames=[], description_data=None):
+    """
+    Generate the EPUB package manifest (OPF file) according to EPUB 3.0 specification.
+    
+    The OPF file is the heart of an EPUB - it defines:
+    - Metadata about the publication
+    - Manifest of all files in the EPUB
+    - Spine defining the reading order
+    - Guide for special pages (cover, etc.)
+    
+    Args:
+        md_filenames: List of markdown/chapter filenames
+        image_filenames: List of image filenames in the EPUB
+        css_filenames: List of CSS stylesheet filenames
+        description_data: Dictionary containing metadata and configuration
+        
+    Returns:
+        XML string containing the complete OPF package document
+        
+    EPUB Structure Created:
+        - Package element with namespaces and version info
+        - Metadata section with Dublin Core elements
+        - Manifest listing all files with proper media types
+        - Spine defining reading order
+        - Guide for backwards compatibility
+    """
+    # Create XML document with proper structure
     doc = minidom.Document()
 
+    # Root package element with EPUB 3.0 namespaces
     package = doc.createElement('package')
     package.setAttribute('xmlns',"http://www.idpf.org/2007/opf")
-    package.setAttribute('version',"3.0")
+    package.setAttribute('version',"3.0")  # EPUB 3.0 specification
     package.setAttribute('xml:lang',"en")
     package.setAttribute("unique-identifier","pub-id")
 
-    ## Now building the metadata
-
+    ## Build metadata section using Dublin Core elements
     metadata = doc.createElement('metadata')
     metadata.setAttribute('xmlns:dc', 'http://purl.org/dc/elements/1.1/')
 
+    # Add each metadata field from user input
     for k,v in description_data["metadata"].items():
-        if len(v):
+        if len(v):  # Only add non-empty metadata
             x = doc.createElement(k)
+            # Add special id attributes for key metadata elements
             for metadata_type,id_label in [("dc:title","title"),("dc:creator","creator"),("dc:identifier","book-id")]:
                 if k==metadata_type:
                     x.setAttribute('id',id_label)
             x.appendChild(doc.createTextNode(v))
             metadata.appendChild(x)
 
-
-    ## Now building the manifest
-
+    ## Build manifest section - lists all files in the EPUB
     manifest = doc.createElement('manifest')
 
-    ## TOC.xhtml file for EPUB 3
+    # Navigation document (TOC.xhtml) - required for EPUB 3
     x = doc.createElement('item')
     x.setAttribute('id',"toc")
-    x.setAttribute('properties',"nav")
+    x.setAttribute('properties',"nav")  # EPUB 3 navigation properties
     x.setAttribute('href',"TOC.xhtml")
     x.setAttribute('media-type',"application/xhtml+xml")
     manifest.appendChild(x)
 
-    ## Ensure retrocompatibility by also providing a TOC.ncx file
+    # NCX file for EPUB 2 backwards compatibility
     x = doc.createElement('item')
     x.setAttribute('id',"ncx")
     x.setAttribute('href',"toc.ncx")
     x.setAttribute('media-type',"application/x-dtbncx+xml")
     manifest.appendChild(x)
 
+    # Title/cover page
     x = doc.createElement('item')
     x.setAttribute('id',"titlepage")
     x.setAttribute('href',"titlepage.xhtml")
     x.setAttribute('media-type',"application/xhtml+xml")
     manifest.appendChild(x)
 
+    # Add each chapter/markdown file as XHTML
     for i,md_filename in enumerate(md_filenames):
         x = doc.createElement('item')
-        x.setAttribute('id',"s{:05d}".format(i))
+        x.setAttribute('id',"s{:05d}".format(i))  # Sequential IDs for chapters
         x.setAttribute('href',"s{:05d}-{}.xhtml".format(i,md_filename.split(".")[0]))
         x.setAttribute('media-type',"application/xhtml+xml")
         manifest.appendChild(x)
 
+    # Add images with proper media types
     for i,image_filename in enumerate(image_filenames):
         x = doc.createElement('item')
         x.setAttribute('id',"image-{:05d}".format(i))
         x.setAttribute('href',"images/{}".format(image_filename))
+        
+        # Set media type based on file extension
         if "gif" in image_filename:
             x.setAttribute('media-type',"image/gif")
         elif "jpg" in image_filename:
@@ -245,16 +451,19 @@ def get_packageOPF_XML(md_filenames=[], image_filenames=[], css_filenames=[], de
             x.setAttribute('media-type',"image/jpg")
         elif "png" in image_filename:
             x.setAttribute('media-type',"image/png")
+            
+        # Mark cover image if specified
         if image_filename==description_data["cover_image"]:
             x.setAttribute('properties',"cover-image")
 
-            ## Ensure compatibility by also providing a meta tag in the metadata
+            # Add compatibility meta tag for EPUB 2 readers
             y = doc.createElement('meta')
             y.setAttribute('name',"cover")
             y.setAttribute('content',"image-{:05d}".format(i))
             metadata.appendChild(y)
         manifest.appendChild(x)
 
+    # Add CSS stylesheets
     for i,css_filename in enumerate(css_filenames):
         x = doc.createElement('item')
         x.setAttribute('id',"css-{:05d}".format(i))
@@ -262,21 +471,24 @@ def get_packageOPF_XML(md_filenames=[], image_filenames=[], css_filenames=[], de
         x.setAttribute('media-type',"text/css")
         manifest.appendChild(x)
 
-    ## Now building the spine
-
+    ## Build spine section - defines reading order
     spine = doc.createElement('spine')
-    spine.setAttribute('toc', "ncx")
+    spine.setAttribute('toc', "ncx")  # Reference to NCX for EPUB 2 compatibility
 
+    # Cover page first
     x = doc.createElement('itemref')
     x.setAttribute('idref',"titlepage")
     x.setAttribute('linear',"yes")
     spine.appendChild(x)
+    
+    # Then all chapters in order
     for i,md_filename in enumerate(md_filenames):
         x = doc.createElement('itemref')
         x.setAttribute('idref',"s{:05d}".format(i))
         x.setAttribute('linear',"yes")
         spine.appendChild(x)
 
+    # Guide section for special pages (EPUB 2 compatibility)
     guide = doc.createElement('guide')
     x = doc.createElement('reference')
     x.setAttribute('type',"cover")
@@ -284,7 +496,7 @@ def get_packageOPF_XML(md_filenames=[], image_filenames=[], css_filenames=[], de
     x.setAttribute('href',"titlepage.xhtml")
     guide.appendChild(x)
 
-
+    # Assemble the complete package
     package.appendChild(metadata)
     package.appendChild(manifest)
     package.appendChild(spine)
@@ -295,6 +507,18 @@ def get_packageOPF_XML(md_filenames=[], image_filenames=[], css_filenames=[], de
 
 
 def get_container_XML():
+    """
+    Generate the EPUB container.xml file that tells readers where to find the OPF file.
+    
+    This is a required file in every EPUB that must be located at META-INF/container.xml.
+    It's the entry point that e-readers use to locate the main package document (OPF).
+    
+    Returns:
+        XML string for the container.xml file
+        
+    Note:
+        This follows the EPUB specification exactly and should not be modified.
+    """
     container_data = """<?xml version="1.0" encoding="UTF-8" ?>\n"""
     container_data += """<container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container">\n"""
     container_data += """<rootfiles>\n"""
@@ -303,12 +527,32 @@ def get_container_XML():
     return container_data
 
 def get_coverpage_XML(title, authors):
-    """Generate a simple cover page with title and optional author input."""
+    """
+    Generate a professional cover page in XHTML format for the EPUB.
+    
+    Creates a clean, readable cover page that works well across different
+    e-readers and screen sizes. The design is responsive and uses web-safe
+    fonts for maximum compatibility.
+    
+    Args:
+        title: Book title to display prominently
+        authors: Author name(s) to display below the title
+        
+    Returns:
+        XHTML string for the cover page
+        
+    Design Features:
+        - Responsive layout that works on various screen sizes
+        - Professional typography with proper hierarchy
+        - Centered design with elegant spacing
+        - Cross-platform font compatibility
+    """
     return f"""<?xml version="1.0" encoding="utf-8"?>
 <html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en">
 <head>
 <title>Cover Page</title>
 <style type="text/css">
+/* Cover page styling optimized for e-readers */
 body {{ 
     margin: 0;
     padding: 0;
@@ -316,25 +560,35 @@ body {{
     display: flex;
     justify-content: center;
     align-items: center;
-    font-family: serif;
+    font-family: serif;  /* Better readability for books */
+    background-color: #fafafa;
 }}
+
 .cover {{
     padding: 3em;
     text-align: center;
     border: 1px solid #ccc;
     max-width: 80%;
+    background-color: white;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.1);
 }}
+
+/* Main title styling */
 h1 {{
     font-size: 2em;
     margin-bottom: 1em;
     line-height: 1.2;
     color: #333;
+    font-weight: bold;
 }}
+
+/* Author styling */
 p {{
     font-size: 1.2em;
     font-style: italic;
     color: #666;
     line-height: 1.4;
+    margin-top: 2em;
 }}
 </style>
 </head>

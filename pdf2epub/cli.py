@@ -1,15 +1,51 @@
 #!/usr/bin/env python3
 """
 Command-line interface for pdf2epub package.
+
+This module provides a comprehensive CLI tool for converting PDF files to EPUB format
+through an intermediate Markdown representation. It supports batch processing,
+configurable AI postprocessing, and flexible output options.
+
+Features:
+- Single PDF or batch directory processing
+- GPU acceleration detection and utilization
+- Configurable conversion parameters (pages, languages, batch size)
+- Optional AI-powered postprocessing for improved quality
+- Flexible output control (skip markdown, skip EPUB, skip AI)
+- Comprehensive logging and error handling
+
+Workflow:
+1. Parse command-line arguments and validate inputs
+2. Detect and configure GPU/CPU processing capabilities  
+3. Queue PDF files for processing (single file or directory scan)
+4. For each PDF:
+   a. Convert PDF to Markdown (unless --skip-md)
+   b. Apply AI postprocessing (unless --skip-ai)
+   c. Convert Markdown to EPUB (unless --skip-epub)
+5. Report results and handle errors gracefully
+
+Example usage:
+    # Basic conversion
+    pdf2epub document.pdf
+    
+    # Advanced options
+    pdf2epub book.pdf --start-page 10 --max-pages 50 --langs "English,German"
+    
+    # Skip certain steps
+    pdf2epub thesis.pdf --skip-epub --skip-ai
 """
+
 import argparse
 from pathlib import Path
 import logging
 import sys
 
+# Import our package modules
 from . import pdf2md, mark2epub
 from .postprocessing.ai import AIPostprocessor
 
+# Optional dependency: PyTorch for GPU acceleration
+# Check availability for optimal performance configuration
 try:
     import torch
     TORCH_AVAILABLE = True
@@ -19,26 +55,51 @@ except ImportError:
 
 
 def main():
-    """Main CLI entry point."""
-    # Configure logging
+    """
+    Main CLI entry point with comprehensive argument parsing and workflow management.
+    
+    This function orchestrates the entire PDF to EPUB conversion process:
+    1. Sets up logging and system capability detection
+    2. Parses and validates command-line arguments
+    3. Builds processing queue from input specification
+    4. Processes each PDF through the conversion pipeline
+    5. Handles errors gracefully with informative messages
+    
+    The function is designed to be robust and user-friendly, providing clear
+    feedback at each step and continuing processing even if individual files fail.
+    """
+    # Configure comprehensive logging for user feedback
     logging.basicConfig(
         level=logging.INFO,
         format='%(asctime)s - %(levelname)s - %(message)s'
     )
     logger = logging.getLogger(__name__)
 
-    # Check CUDA availability
+    # Detect and report system capabilities for optimal performance
     if TORCH_AVAILABLE and torch.cuda.is_available():
         logger.info("CUDA is available. Using GPU for processing.")
+        logger.info(f"GPU: {torch.cuda.get_device_name()}")
     elif TORCH_AVAILABLE:
         logger.info("CUDA is not available. Using CPU for processing.")
     else:
         logger.info("PyTorch not available. GPU acceleration disabled.")
         
-    # Set up argument parser
+    # Set up comprehensive argument parser with all conversion options
     parser = argparse.ArgumentParser(
-        description='Convert PDF files to EPUB format via Markdown with AI postprocessing'
+        description='Convert PDF files to EPUB format via Markdown with AI postprocessing',
+        epilog="""
+Examples:
+  %(prog)s document.pdf                    # Basic conversion
+  %(prog)s book.pdf output/               # Specify output directory  
+  %(prog)s --start-page 10 --max-pages 50 book.pdf  # Process specific pages
+  %(prog)s --langs "English,German" multilang.pdf   # Specify languages
+  %(prog)s --skip-epub document.pdf       # Only create markdown
+  %(prog)s --skip-ai --skip-md existing/  # Only create EPUB from existing markdown
+        """,
+        formatter_class=argparse.RawDescriptionHelpFormatter
     )
+    
+    # Input/Output arguments
     parser.add_argument(
         'input_path',
         nargs='?',
@@ -51,6 +112,8 @@ def main():
         type=str,
         help='Path to output directory (default: directory named after PDF)'
     )
+    
+    # PDF Processing arguments
     parser.add_argument(
         '--batch-multiplier',
         type=int,
@@ -75,6 +138,8 @@ def main():
         default=None,
         help='Comma-separated list of languages in the document'
     )
+    
+    # Workflow control arguments
     parser.add_argument(
         '--skip-epub',
         action='store_true',
@@ -100,18 +165,19 @@ def main():
     
     args = parser.parse_args()
     
-    # Get input path
+    # Determine input path with fallback to default directory
     input_path = Path(args.input_path) if args.input_path else pdf2md.get_default_input_dir()
     
-    # Get queue of PDFs to process
+    # Build processing queue from input specification
     queue = pdf2md.add_pdfs_to_queue(input_path)
     logger.info(f"Found {len(queue)} PDF files to process")
     
-    # Process each PDF
+    # Process each PDF in the queue
     for pdf_path in queue:
         logger.info(f"\nProcessing: {pdf_path.name}")
+        logger.info(f"File size: {pdf_path.stat().st_size / 1024 / 1024:.1f} MB")
         
-        # Get output directory for this PDF
+        # Determine output paths for this PDF
         if args.output_path:
             output_path = Path(args.output_path)
             markdown_dir = output_path / pdf_path.stem
@@ -120,16 +186,29 @@ def main():
             output_path = markdown_dir.parent
             
         try:
-            # Check if markdown directory exists when skipping MD generation
+            # Validate markdown directory if skipping MD generation
             if args.skip_md:
                 if not markdown_dir.exists():
                     logger.error(f"Error: Markdown directory not found: {markdown_dir}")
+                    logger.error("Cannot skip markdown generation without existing markdown files")
                     continue
                 logger.info(f"Using existing markdown files from: {markdown_dir}")
                 
-            # Convert PDF to Markdown unless skipped
+            # Step 1: Convert PDF to Markdown (unless skipped)
             if not args.skip_md:
                 logger.info("Converting PDF to Markdown...")
+                logger.info(f"Output directory: {markdown_dir}")
+                
+                # Log conversion parameters for transparency
+                if args.batch_multiplier != 2:
+                    logger.info(f"Using batch multiplier: {args.batch_multiplier}")
+                if args.max_pages:
+                    logger.info(f"Processing maximum {args.max_pages} pages")
+                if args.start_page:
+                    logger.info(f"Starting from page {args.start_page}")
+                if args.langs:
+                    logger.info(f"Using languages: {args.langs}")
+                
                 pdf2md.convert_pdf(
                     str(pdf_path),
                     markdown_dir,
@@ -138,16 +217,20 @@ def main():
                     args.start_page,
                     args.langs
                 )
+                logger.info("PDF to Markdown conversion completed successfully")
             
-            # Handle AI postprocessing if not skipped
+            # Step 2: Apply AI postprocessing (unless skipped)
             if not args.skip_ai:
                 try:
                     markdown_file = markdown_dir / f"{pdf_path.stem}.md"
                     if markdown_file.exists():
                         logger.info("\nInitiating AI postprocessing analysis...")
+                        logger.info(f"AI Provider: {args.ai_provider}")
+                        logger.info("This may take several minutes depending on document length...")
+                        
                         processor = AIPostprocessor(markdown_dir)
                         
-                        # Run AI postprocessing
+                        # Run AI postprocessing with error handling
                         processor.run_postprocessing(
                             markdown_path=markdown_file,
                             ai_provider=args.ai_provider
@@ -156,19 +239,35 @@ def main():
                         logger.info("AI postprocessing completed successfully")
                     else:
                         logger.warning(f"Warning: Markdown file not found for AI processing: {markdown_file}")
+                        logger.warning("Skipping AI postprocessing for this file")
+                        
                 except Exception as e:
                     logger.error(f"Error during AI postprocessing: {e}")
-                    logger.info("Proceeding with original markdown")
+                    logger.info("Proceeding with original markdown (AI postprocessing is optional)")
             
-            # Convert Markdown to EPUB unless skipped
+            # Step 3: Convert Markdown to EPUB (unless skipped)
             if not args.skip_epub:
                 logger.info("Converting Markdown to EPUB...")
+                logger.info(f"EPUB will be created in: {output_path}")
+                
                 mark2epub.convert_to_epub(markdown_dir, output_path)
-                logger.info("EPUB conversion completed")
+                logger.info("EPUB conversion completed successfully")
+                
+                # Report final output location
+                epub_file = markdown_dir / f"{markdown_dir.name}.epub"
+                if epub_file.exists():
+                    logger.info(f"Final EPUB: {epub_file}")
+                    logger.info(f"EPUB size: {epub_file.stat().st_size / 1024 / 1024:.1f} MB")
+            
+            logger.info(f"Successfully completed processing: {pdf_path.name}")
                 
         except Exception as e:
+            # Log error but continue with other files
             logger.error(f"Error processing {pdf_path.name}: {str(e)}")
+            logger.error("Continuing with next file...")
             continue
+
+    logger.info("\nAll files processed. Conversion complete!")
 
 
 if __name__ == '__main__':
