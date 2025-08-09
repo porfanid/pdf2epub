@@ -9,7 +9,6 @@ import sys
 import json
 import shutil
 from pathlib import Path
-import unittest.mock
 
 # Add the pdf2epub package to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__)))
@@ -37,30 +36,8 @@ def test_epub_conversion():
     print(f"Output file: {output_file}")
 
     try:
-        # Read existing metadata from JSON file
-        metadata_file = test_dir / "description.json"
-        if metadata_file.exists():
-            with open(metadata_file, "r") as f:
-                data = json.load(f)
-                metadata = data.get("metadata", {})
-        else:
-            metadata = {}
-
-        # Prepare mock responses for metadata input (7 fields) + markdown review
-        responses = [
-            metadata.get("dc:title", "Test Document"),  # Title
-            metadata.get("dc:creator", "Test Author"),  # Author
-            metadata.get("dc:identifier", "test-id-123"),  # Identifier
-            metadata.get("dc:language", "en"),  # Language
-            metadata.get("dc:rights", "All rights reserved"),  # Rights
-            metadata.get("dc:publisher", "Test Publisher"),  # Publisher
-            metadata.get("dc:date", "2025-08-09"),  # Date
-            "n",  # Don't review/edit markdown
-        ]
-
-        # Mock the input function to provide metadata automatically
-        with unittest.mock.patch("builtins.input", side_effect=responses):
-            mark2epub.convert_to_epub(test_dir, output_file)
+        # Use batch mode to avoid interactive prompts
+        mark2epub.convert_to_epub(test_dir, output_file, batch_mode=True)
 
         # Verify output (the function creates EPUB in the source directory)
         actual_output = test_dir / f"{test_dir.name}.epub"

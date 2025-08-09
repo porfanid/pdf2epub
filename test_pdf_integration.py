@@ -56,6 +56,7 @@ def test_pdf_to_epub_conversion():
                 str(test_pdf),
                 str(output_dir),
                 "--skip-ai",  # Skip AI processing to avoid API key requirement
+                "--batch",  # Use batch mode to avoid interactive prompts
                 "--batch-multiplier",
                 "1",  # Use minimal resources
                 "--max-pages",
