@@ -178,3 +178,7 @@ config.yaml
 .DS_Store
 
 Computer Vision Algorithms and Applications (Texts in Computer Science) (Richard Szeliski) (Z-Library).pdf
+
+# Test artifacts that shouldn't be committed  
+test_markdown/*.epub
+/tmp/test_output.epub

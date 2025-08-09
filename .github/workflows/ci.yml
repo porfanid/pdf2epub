@@ -54,8 +54,42 @@ jobs:
         name: codecov-umbrella
         fail_ci_if_error: false
 
-  build:
+  integration-test:
     needs: test
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: "3.11"
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -e .[dev]
+        # Additional dependencies for integration testing
+        pip install reportlab
+    
+    - name: Test EPUB conversion (offline functionality)
+      run: |
+        python3 test_epub_conversion.py
+    
+    - name: Test PDF to EPUB conversion (with network fallback)
+      run: |
+        python3 test_pdf_integration.py
+    
+    - name: Upload EPUB artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: test-epub
+        path: /tmp/test_output.epub
+        retention-days: 7
+
+  build:
+    needs: [test, integration-test]
     runs-on: ubuntu-latest
     if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev')
     
