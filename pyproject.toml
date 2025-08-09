@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "pdf2epub"
-version = "0.1.0"
+version = "0.1.1"
 description = "Convert PDF files to EPUB format via Markdown with intelligent layout detection"
 readme = "README.md"
 license = {text = "MIT"}
