@@ -31,6 +31,103 @@ except ImportError:
 import io
 
 
+def validate_model_list(model_lst) -> bool:
+    """
+    Validate that the model list from marker-pdf has the expected structure.
+    
+    This function checks that all required models are present and have the
+    necessary attributes to prevent runtime errors during PDF processing.
+    
+    Args:
+        model_lst: List of models returned by load_all_models()
+        
+    Returns:
+        bool: True if models are valid, False otherwise
+        
+    Raises:
+        ValueError: If critical model validation fails
+    """
+    if not isinstance(model_lst, list):
+        raise ValueError(f"Expected model list, got {type(model_lst)}")
+        
+    if len(model_lst) != 6:
+        raise ValueError(f"Expected 6 models, got {len(model_lst)}")
+    
+    model_names = ["texify", "layout", "order", "detection", "ocr", "table_rec"]
+    
+    for i, (model, name) in enumerate(zip(model_lst, model_names)):
+        # Check for processor attribute (required by marker-pdf)
+        if not hasattr(model, 'processor'):
+            print(f"Warning: {name} model (index {i}) missing processor attribute")
+            return False
+            
+        # Check model has basic required methods/attributes
+        if not hasattr(model, '__call__') and not hasattr(model, 'forward'):
+            print(f"Warning: {name} model appears to be missing callable interface")
+            
+        # For encoder-decoder models, check key attributes exist
+        if hasattr(model, 'config'):
+            config = model.config
+            # Check for encoder-related configuration
+            if hasattr(config, 'encoder') or hasattr(config, 'decoder'):
+                print(f"Model {name} has encoder/decoder configuration")
+                
+        # Check if model has encoder attribute directly
+        if hasattr(model, 'encoder'):
+            print(f"Model {name} has encoder attribute")
+            
+    print("All models passed basic validation")
+    return True
+
+
+def print_troubleshooting_info(error: Exception) -> None:
+    """
+    Print helpful troubleshooting information for common PDF conversion errors.
+    
+    Args:
+        error: The exception that occurred during conversion
+    """
+    error_str = str(error)
+    error_type = type(error).__name__
+    
+    print(f"\n=== PDF2EPUB Troubleshooting Information ===")
+    print(f"Error: {error_type}: {error_str}")
+    
+    if "'encoder'" in error_str or "encoder" in error_str.lower():
+        print("\nEncoder-related error detected. Common causes:")
+        print("1. Model version incompatibility between marker-pdf and dependencies")
+        print("2. Incomplete or corrupted model download from HuggingFace")
+        print("3. Network interruption during initial model download")
+        print("4. Insufficient disk space for model cache")
+        
+        print("\nSuggested fixes:")
+        print("1. Clear HuggingFace cache: rm -rf ~/.cache/huggingface/")
+        print("   Or use: python3 -c \"from pdf2epub.pdf2md import clear_model_cache; clear_model_cache()\"")
+        print("2. Reinstall marker-pdf: pip uninstall marker-pdf && pip install marker-pdf==0.3.10")
+        print("3. Check available disk space")
+        print("4. Ensure stable internet connection for model downloads")
+        
+    elif "memory" in error_str.lower() or "oom" in error_str.lower() or "out of memory" in error_str.lower():
+        print("\nMemory-related error detected:")
+        print("1. Reduce batch_multiplier (try 1)")
+        print("2. Process fewer pages at once using --max-pages")
+        print("3. Close other applications to free memory")
+        
+    elif "cuda" in error_str.lower() or "gpu" in error_str.lower():
+        print("\nGPU-related error detected:")
+        print("1. CUDA/GPU drivers may be incompatible")
+        print("2. Try running with CPU only")
+        print("3. Check GPU memory availability")
+        
+    elif "connection" in error_str.lower() or "network" in error_str.lower() or "huggingface.co" in error_str.lower():
+        print("\nNetwork-related error detected:")
+        print("1. Check internet connection")
+        print("2. Models need to download on first run")
+        print("3. Consider using offline mode after initial download")
+        
+    print("===============================================\n")
+
+
 def get_default_output_dir(input_path: Path) -> Path:
     """
     Generate default output directory path based on input PDF path.
@@ -194,7 +291,17 @@ def convert_pdf(
         # Load all required models for PDF processing
         # This includes OCR, layout detection, and table recognition models
         print("Loading PDF processing models...")
-        model_lst = load_all_models()
+        try:
+            model_lst = load_all_models()
+            print(f"Successfully loaded {len(model_lst)} models")
+            
+            # Validate model list structure and integrity
+            validate_model_list(model_lst)
+                
+        except Exception as e:
+            print(f"Error during model loading: {e}")
+            print(f"Error type: {type(e).__name__}")
+            raise
 
         # Parse languages parameter if provided
         # Convert from comma-separated string to list for marker-pdf
@@ -212,14 +319,26 @@ def convert_pdf(
         if start_page:
             print(f"Starting from page {start_page}")
 
-        full_text, images, metadata = convert_single_pdf(
-            input_path,
-            model_lst,
-            batch_multiplier=batch_multiplier,
-            max_pages=max_pages,
-            start_page=start_page,
-            langs=languages,
-        )
+        try:
+            full_text, images, metadata = convert_single_pdf(
+                input_path,
+                model_lst,
+                batch_multiplier=batch_multiplier,
+                max_pages=max_pages,
+                start_page=start_page,
+                langs=languages,
+            )
+        except KeyError as e:
+            print(f"KeyError during PDF conversion: {e}")
+            print_troubleshooting_info(e)
+            raise
+        except Exception as e:
+            print(f"Unexpected error during PDF conversion: {e}")
+            print(f"Error type: {type(e).__name__}")
+            print_troubleshooting_info(e)
+            import traceback
+            traceback.print_exc()
+            raise
 
         # Create output directory structure
         output_dir.mkdir(parents=True, exist_ok=True)
@@ -266,6 +385,45 @@ def convert_pdf(
         # Print error and exit with error code for CLI usage
         print(f"Error converting {input_path}: {str(e)}", file=sys.stderr)
         sys.exit(1)
+
+
+def clear_model_cache() -> bool:
+    """
+    Clear HuggingFace model cache to resolve model loading issues.
+    
+    This function attempts to clear the HuggingFace cache directory
+    which can resolve issues with corrupted or incomplete model downloads.
+    
+    Returns:
+        bool: True if cache was cleared successfully, False otherwise
+    """
+    import shutil
+    from pathlib import Path
+    import os
+    
+    # Common HuggingFace cache locations
+    cache_dirs = [
+        Path.home() / ".cache" / "huggingface",
+        Path.home() / ".cache" / "torch",
+        Path(os.environ.get("HF_HOME", "")) if "HF_HOME" in os.environ else None,
+    ]
+    
+    cleared_any = False
+    
+    for cache_dir in cache_dirs:
+        if cache_dir and cache_dir.exists():
+            try:
+                print(f"Clearing cache directory: {cache_dir}")
+                shutil.rmtree(cache_dir)
+                print(f"Successfully cleared: {cache_dir}")
+                cleared_any = True
+            except Exception as e:
+                print(f"Failed to clear {cache_dir}: {e}")
+                
+    if not cleared_any:
+        print("No cache directories found to clear")
+        
+    return cleared_any
 
 
 def add_pdfs_to_queue(input_path: Path) -> list[Path]:

@@ -77,8 +77,23 @@ def main():
         choices=["anthropic"],
         help="AI provider to use for postprocessing",
     )
+    parser.add_argument(
+        "--clear-cache",
+        action="store_true",
+        help="Clear model cache and exit (useful for fixing model loading issues)",
+    )
 
     args = parser.parse_args()
+
+    # Handle cache clearing request
+    if args.clear_cache:
+        logger.info("Clearing model cache...")
+        success = pdf2md.clear_model_cache()
+        if success:
+            logger.info("Model cache cleared successfully")
+        else:
+            logger.info("No cache found to clear or cache clearing failed")
+        return
 
     # Get input path
     input_path = (
@@ -151,6 +166,13 @@ def main():
 
         except Exception as e:
             logger.error(f"Error processing {pdf_path.name}: {str(e)}")
+            
+            # Provide troubleshooting information for common errors
+            if "'encoder'" in str(e) or "KeyError" in str(e):
+                logger.info("This appears to be a model loading issue.")
+                logger.info("Try running: python3 main.py --clear-cache")
+                logger.info("Then retry your conversion.")
+            
             continue
 
 
