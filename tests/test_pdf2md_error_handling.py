@@ -40,8 +40,8 @@ class TestPDF2MDErrorHandling:
     def test_validate_model_list_missing_processor(self):
         """Test validate_model_list with models missing processor."""
         # Create mock objects without processor attribute
-        mock_models = [type('Model', (), {})() for _ in range(6)]
-        
+        mock_models = [type("Model", (), {})() for _ in range(6)]
+
         # This should return False because none have processor
         result = validate_model_list(mock_models)
         assert result is False
@@ -51,11 +51,11 @@ class TestPDF2MDErrorHandling:
         # Create mock models with processor attribute
         mock_models = []
         for i in range(6):
-            model = type('Model', (), {})()
+            model = type("Model", (), {})()
             model.processor = "mock_processor"
             model.__call__ = lambda: None  # Make it callable
             mock_models.append(model)
-        
+
         result = validate_model_list(mock_models)
         assert result is True
 
@@ -63,7 +63,7 @@ class TestPDF2MDErrorHandling:
         """Test troubleshooting info for encoder errors."""
         error = KeyError("'encoder'")
         print_troubleshooting_info(error)
-        
+
         captured = capsys.readouterr()
         assert "Encoder-related error detected" in captured.out
         assert "Model version incompatibility" in captured.out
@@ -73,7 +73,7 @@ class TestPDF2MDErrorHandling:
         """Test troubleshooting info for memory errors."""
         error = RuntimeError("out of memory error")
         print_troubleshooting_info(error)
-        
+
         captured = capsys.readouterr()
         assert "Memory-related error detected" in captured.out
         assert "batch_multiplier" in captured.out
@@ -82,7 +82,7 @@ class TestPDF2MDErrorHandling:
         """Test troubleshooting info for network errors."""
         error = ConnectionError("Failed to connect to huggingface.co")
         print_troubleshooting_info(error)
-        
+
         captured = capsys.readouterr()
         assert "Network-related error detected" in captured.out
         assert "internet connection" in captured.out
@@ -91,7 +91,7 @@ class TestPDF2MDErrorHandling:
         """Test cache clearing when no cache exists."""
         # This should handle the case where cache directories don't exist
         result = clear_model_cache()
-        
+
         captured = capsys.readouterr()
         # Should either clear something or report no cache found
         assert "cache" in captured.out.lower()
@@ -102,25 +102,26 @@ class TestPDF2MDErrorHandling:
             # Mock a cache directory structure
             cache_dir = Path(temp_dir) / "test_cache"
             cache_dir.mkdir()
-            
+
             # Create a dummy file in cache
             (cache_dir / "dummy_model").write_text("test")
-            
+
             # Patch the cache directories to use our temp directory
             import pdf2epub.pdf2md as pdf2md
+
             original_home = Path.home
-            
+
             try:
                 # Mock Path.home() to return our temp directory
                 Path.home = lambda: Path(temp_dir)
-                
+
                 # Since we mocked home, clear_model_cache should look in temp_dir
                 result = clear_model_cache()
-                
+
                 # The function may or may not find our specific structure
                 # but it should not crash
                 assert isinstance(result, bool)
-                
+
             finally:
                 # Restore original Path.home
                 Path.home = original_home

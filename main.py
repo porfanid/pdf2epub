@@ -166,13 +166,13 @@ def main():
 
         except Exception as e:
             logger.error(f"Error processing {pdf_path.name}: {str(e)}")
-            
+
             # Provide troubleshooting information for common errors
             if "'encoder'" in str(e) or "KeyError" in str(e):
                 logger.info("This appears to be a model loading issue.")
                 logger.info("Try running: python3 main.py --clear-cache")
                 logger.info("Then retry your conversion.")
-            
+
             continue
 
 
