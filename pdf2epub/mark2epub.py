@@ -86,7 +86,9 @@ def get_user_input(prompt: str, default: str = "") -> str:
     return user_input if user_input else default
 
 
-def get_metadata_from_user(existing_metadata: Optional[Dict] = None) -> Dict:
+def get_metadata_from_user(
+    existing_metadata: Optional[Dict] = None, batch_mode: bool = False
+) -> Dict:
     """
     Interactively collect EPUB metadata from user with intelligent defaults.
 
@@ -96,6 +98,7 @@ def get_metadata_from_user(existing_metadata: Optional[Dict] = None) -> Dict:
 
     Args:
         existing_metadata: Optional dictionary containing previously saved metadata
+        batch_mode: If True, use defaults without prompting for user input
 
     Returns:
         Complete metadata dictionary with all required EPUB fields
@@ -115,40 +118,56 @@ def get_metadata_from_user(existing_metadata: Optional[Dict] = None) -> Dict:
     # Extract existing metadata or use empty dict
     metadata = existing_metadata.get("metadata", {})
 
-    print(
-        "\nPlease provide the following metadata for your EPUB (press Enter to use default value):"
-    )
-    print(
-        "This information will be embedded in the EPUB file and shown by e-readers.\n"
-    )
-
-    # Define all metadata fields with their prompts and intelligent defaults
-    fields = {
-        "dc:title": ("Title", metadata.get("dc:title", "Untitled Document")),
-        "dc:creator": ("Author(s)", metadata.get("dc:creator", "Unknown Author")),
-        "dc:identifier": (
-            "Unique Identifier",
-            metadata.get(
+    # In batch mode, use defaults without prompting
+    if batch_mode:
+        print("Running in batch mode - using default metadata values")
+        fields = {
+            "dc:title": metadata.get("dc:title", "Untitled Document"),
+            "dc:creator": metadata.get("dc:creator", "Unknown Author"),
+            "dc:identifier": metadata.get(
                 "dc:identifier", f"id-{datetime.now().strftime('%Y%m%d%H%M%S')}"
             ),
-        ),
-        "dc:language": (
-            "Language (e.g., en, de, fr)",
-            metadata.get("dc:language", "en"),
-        ),
-        "dc:rights": ("Rights", metadata.get("dc:rights", "All rights reserved")),
-        "dc:publisher": ("Publisher", metadata.get("dc:publisher", "PDF2EPUB")),
-        "dc:date": (
-            "Publication Date (YYYY-MM-DD)",
-            metadata.get("dc:date", datetime.now().strftime("%Y-%m-%d")),
-        ),
-    }
+            "dc:language": metadata.get("dc:language", "en"),
+            "dc:rights": metadata.get("dc:rights", "All rights reserved"),
+            "dc:publisher": metadata.get("dc:publisher", "PDF2EPUB"),
+            "dc:date": metadata.get("dc:date", datetime.now().strftime("%Y-%m-%d")),
+        }
+        updated_metadata = fields
+    else:
+        print(
+            "\nPlease provide the following metadata for your EPUB (press Enter to use default value):"
+        )
+        print(
+            "This information will be embedded in the EPUB file and shown by e-readers.\n"
+        )
 
-    # Collect input for each field
-    updated_metadata = {}
-    for key, (prompt, default) in fields.items():
-        value = get_user_input(prompt, default)
-        updated_metadata[key] = value
+        # Define all metadata fields with their prompts and intelligent defaults
+        fields = {
+            "dc:title": ("Title", metadata.get("dc:title", "Untitled Document")),
+            "dc:creator": ("Author(s)", metadata.get("dc:creator", "Unknown Author")),
+            "dc:identifier": (
+                "Unique Identifier",
+                metadata.get(
+                    "dc:identifier", f"id-{datetime.now().strftime('%Y%m%d%H%M%S')}"
+                ),
+            ),
+            "dc:language": (
+                "Language (e.g., en, de, fr)",
+                metadata.get("dc:language", "en"),
+            ),
+            "dc:rights": ("Rights", metadata.get("dc:rights", "All rights reserved")),
+            "dc:publisher": ("Publisher", metadata.get("dc:publisher", "PDF2EPUB")),
+            "dc:date": (
+                "Publication Date (YYYY-MM-DD)",
+                metadata.get("dc:date", datetime.now().strftime("%Y-%m-%d")),
+            ),
+        }
+
+        # Collect input for each field
+        updated_metadata = {}
+        for key, (prompt, default) in fields.items():
+            value = get_user_input(prompt, default)
+            updated_metadata[key] = value
 
     # Return complete metadata structure with defaults for optional fields
     return {
@@ -159,7 +178,7 @@ def get_metadata_from_user(existing_metadata: Optional[Dict] = None) -> Dict:
     }
 
 
-def review_markdown(markdown_path: Path) -> tuple[bool, str]:
+def review_markdown(markdown_path: Path, batch_mode: bool = False) -> tuple[bool, str]:
     """
     Allow user to review and edit markdown content before EPUB conversion.
 
@@ -169,6 +188,7 @@ def review_markdown(markdown_path: Path) -> tuple[bool, str]:
 
     Args:
         markdown_path: Path to the markdown file to review
+        batch_mode: If True, skip review and use content as-is
 
     Returns:
         Tuple of (should_continue: bool, content: str)
@@ -181,6 +201,13 @@ def review_markdown(markdown_path: Path) -> tuple[bool, str]:
     """
     # Read the current content
     content = markdown_path.read_text(encoding="utf-8")
+
+    # In batch mode, skip review and proceed with current content
+    if batch_mode:
+        print(
+            f"Batch mode: Using markdown content from {markdown_path.name} without review"
+        )
+        return True, content
 
     while True:
         response = input(
@@ -744,9 +771,16 @@ def get_chapter_XML(
     return xhtml, chapter_images
 
 
-def convert_to_epub(markdown_dir: Path, output_path: Path) -> None:
+def convert_to_epub(
+    markdown_dir: Path, output_path: Path, batch_mode: bool = False
+) -> None:
     """
     Convert markdown files and images to EPUB format.
+
+    Args:
+        markdown_dir: Directory containing markdown files and images
+        output_path: Directory where EPUB file will be created
+        batch_mode: If True, run without interactive prompts
     """
     if not markdown_dir.exists():
         raise FileNotFoundError(f"Markdown directory not found: {markdown_dir}")
@@ -759,10 +793,10 @@ def convert_to_epub(markdown_dir: Path, output_path: Path) -> None:
 
     # Generate EPUB file
     epub_path = markdown_dir / f"{markdown_dir.name}.epub"
-    main([str(markdown_dir), str(epub_path)])
+    main([str(markdown_dir), str(epub_path)], batch_mode=batch_mode)
 
 
-def main(args):
+def main(args, batch_mode: bool = False):
     if len(args) < 2:
         print("\nUsage:\n    python md2epub.py <markdown_directory> <output_file.epub>")
         exit(1)
@@ -783,7 +817,7 @@ def main(args):
                 existing_metadata = json.load(f)
 
         # Get metadata from user
-        json_data = get_metadata_from_user(existing_metadata)
+        json_data = get_metadata_from_user(existing_metadata, batch_mode=batch_mode)
 
         # Find all markdown files if not already in metadata
         if not json_data["chapters"]:
@@ -799,7 +833,7 @@ def main(args):
         chapter_contents = {}
         for chapter in json_data["chapters"]:
             md_path = Path(work_dir) / chapter["markdown"]
-            should_continue, content = review_markdown(md_path)
+            should_continue, content = review_markdown(md_path, batch_mode=batch_mode)
             if not should_continue:
                 print("\nConversion aborted by user.")
                 return
@@ -966,4 +1000,4 @@ def main(args):
 
 
 if __name__ == "__main__":
-    main(sys.argv[1:])
+    main(sys.argv[1:], batch_mode=False)

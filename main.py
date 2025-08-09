@@ -82,6 +82,11 @@ def main():
         action="store_true",
         help="Clear model cache and exit (useful for fixing model loading issues)",
     )
+    parser.add_argument(
+        "--batch",
+        action="store_true",
+        help="Run in batch mode without interactive prompts (useful for CI/automation)",
+    )
 
     args = parser.parse_args()
 
@@ -161,7 +166,9 @@ def main():
             # Convert Markdown to EPUB unless skipped
             if not args.skip_epub:
                 logger.info("Converting Markdown to EPUB...")
-                mark2epub.convert_to_epub(markdown_dir, output_path)
+                mark2epub.convert_to_epub(
+                    markdown_dir, output_path, batch_mode=args.batch
+                )
                 logger.info("EPUB conversion completed")
 
         except Exception as e:
