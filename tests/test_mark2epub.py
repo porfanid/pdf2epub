@@ -134,8 +134,11 @@ class TestMark2EPUB:
             # Create dummy source file
             src_path.write_bytes(b"fake image")
 
-            # Since PIL is not available in test environment, this should do a simple copy
-            mark2epub.copy_and_optimize_image(src_path, dest_path, max_dimension=1800)
+            # Mock PIL_AVAILABLE to test the fallback path with simple file copy
+            with patch("pdf2epub.mark2epub.PIL_AVAILABLE", False):
+                mark2epub.copy_and_optimize_image(
+                    src_path, dest_path, max_dimension=1800
+                )
 
             # Check that file was copied
             assert dest_path.exists()
